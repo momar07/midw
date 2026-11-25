@@ -1828,6 +1828,75 @@ app.post('/simulate/state', async (req, res) => {
     res.json({ ok: true, updated: updated });
 });
 
+//-----------------------------------------------------------------------------
+// the whatsapp bridge (Phase 1: notifications only)
+//-----------------------------------------------------------------------------
+// The WhatsApp omnichannel service posts an agent's unread snapshot here
+// whenever it changes (a new customer message, an assignment, a close, a
+// read). The middleware forwards it to the agent's phonebar on its queue
+// session socket — the same socket, and the same framing (one JSON object
+// with an "event" field), as the crm_screen_pop copy above. Behind the
+// same internal-token auth as the admin hook: the ADMIN_TOKEN as a Bearer
+// header; with no ADMIN_TOKEN configured the route is off (404).
+app.post('/internal/whatsapp/events', async (req, res) => {
+    if (!config.adminToken) {
+        return res.status(404).json({ error: 'the admin hook is off' });
+    }
+    const header = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (header !== config.adminToken) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    const body = req.body || {};
+    const identity = body.issabel_user_id != null ? String(body.issabel_user_id) : '';
+    if (!identity) {
+        return res.status(400).json({ error: 'issabel_user_id is required' });
+    }
+
+    // Resolve the identity to the live queue session of the agent. The
+    // sessions carry the login username (see findAgentByIssabelIdentity in
+    // db.js for the documented identity assumption): a live session whose
+    // username matches wins; the cc_agents mapping is the fallback.
+    let entry = null;
+    for (const e of sessions.values()) {
+        if (e.session && e.session.username === identity) {
+            entry = e;
+            break;
+        }
+    }
+    if (!entry) {
+        try {
+            const agent = await db.findAgentByIssabelIdentity(identity);
+            if (agent) {
+                entry = sessions.get(String(agent.sip_extension)) || null;
+            }
+        } catch (e) {
+            console.error('whatsapp bridge: the agent lookup failed: ' + e.message);
+        }
+    }
+    if (!entry || !entry.ws || entry.ws.readyState !== 1) {
+        // The agent is offline: the snapshot is dropped on purpose. The bar
+        // rebuilds its state from the next event after the agent logs in.
+        return res.json({ ok: true, delivered: false });
+    }
+
+    const data = {
+        issabel_user_id: body.issabel_user_id,
+        kind: body.kind === 'assigned' ? 'assigned' : 'snapshot',
+        unread_total: Number(body.unread_total) || 0,
+        tickets: Array.isArray(body.tickets) ? body.tickets.slice(0, 10) : [],
+    };
+    if (body.assigned_ticket && typeof body.assigned_ticket === 'object') {
+        data.assigned_ticket = body.assigned_ticket;
+    }
+    try {
+        entry.ws.send(JSON.stringify(Object.assign({}, data, { event: 'whatsapp_update' })));
+    } catch (e) {
+        return res.json({ ok: true, delivered: false });
+    }
+    return res.json({ ok: true, delivered: true });
+});
+
 // The dashboard of the supervisor is a static page.
 app.use(express.static(path.join(__dirname, 'public')));
 

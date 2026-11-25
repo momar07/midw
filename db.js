@@ -36,6 +36,27 @@ async function findAgentByIssabelUsername(issabelUsername) {
     return rows.length ? rows[0] : null;
 }
 
+// The agent behind an Issabel identity posted by another Issabel module
+// (the WhatsApp service posts its issabel_user_id to
+// /internal/whatsapp/events). ASSUMPTION, made deliberately: the sessions
+// of the middleware are keyed by sip extension and carry only the
+// cc_agents login username — there is no numeric Issabel user id anywhere
+// in the data of the middleware, and no Issabel users table is read here.
+// The only Issabel link the middleware owns is cc_agents.issabel_username,
+// so the incoming identity is matched against issabel_username first and
+// against the login username second (on this deployment the Issabel
+// username and the agent login username are the same strings). If the
+// WhatsApp module's id space ever becomes numeric-only, this function is
+// the single place to extend (e.g. an issabel_user_id column on cc_agents).
+async function findAgentByIssabelIdentity(identity) {
+    if (!identity) return null;
+    const [rows] = await pool.execute(
+        'SELECT id, username, sip_extension, issabel_username FROM cc_agents '
+        + 'WHERE is_active = 1 AND (issabel_username = ? OR username = ?) LIMIT 1',
+        [String(identity), String(identity)]);
+    return rows.length ? rows[0] : null;
+}
+
 async function ensureIssabelUsernameColumn() {
     try {
         const [rows] = await pool.execute(
@@ -899,6 +920,7 @@ module.exports = {
     pool,
     findAgent,
     findAgentByIssabelUsername,
+    findAgentByIssabelIdentity,
     ensureIssabelUsernameColumn,
     sipSecret,
     sipInterface,
