@@ -2659,7 +2659,7 @@ async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
         const queueNumber = (entry && entry.session && entry.session.activeQueue)
             || callQueueByUid.get(String(uniqueid || '')) || '';
         const queueName = await queueNameFor(queueNumber);
-        broadcastCrmScreenPop({
+        const popPayload = {
             type: 'crm_screen_pop',
             agent_ext: String(agentExt || ''),
             caller_id: String(callerId || ''),
@@ -2678,7 +2678,17 @@ async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
                 notes: last.notes || '',
                 created_at: last.created_at || null,
             } : null,
-        });
+        };
+        broadcastCrmScreenPop(popPayload);
+        // The softphone of the agent rides its queue session socket, it is
+        // not one of the dashboard watchers above, so it never saw the pop.
+        // It gets its own copy on that socket, framed with event (the
+        // framing its parser speaks) instead of type.
+        if (entry && entry.ws && entry.ws.readyState === 1) {
+            try {
+                entry.ws.send(JSON.stringify(Object.assign({}, popPayload, { event: 'crm_screen_pop' })));
+            } catch (e) {}
+        }
     } catch (e) {
         // non-blocking
     }
