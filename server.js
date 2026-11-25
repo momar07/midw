@@ -639,6 +639,7 @@ app.post('/api/login', async (req, res) => {
         sip_server_ip: config.sip.serverIp,
         sip_server_port: config.sip.serverPort,
         assigned_queues: queues,
+        queue_names: await queueNamesFor(queues),
         pause_reasons: reasons,
         token: token,
         timestamp: now(),
@@ -2645,6 +2646,18 @@ async function queueNameFor(queueNumber) {
         }
     }
     return queueNamesCache.names[num] || num;
+}
+
+// The display names of a list of queues, for the login answer: a map of
+// extension -> descr with only the queues that really have a description
+// (the client falls back to the number for the rest).
+async function queueNamesFor(numbers) {
+    const map = {};
+    for (const n of numbers || []) {
+        const name = await queueNameFor(n);
+        if (name && name !== String(n)) map[String(n)] = name;
+    }
+    return map;
 }
 
 async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
