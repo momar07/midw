@@ -2629,17 +2629,42 @@ async function crmLookupByPhone(phoneRaw) {
     return { customer, interactions: iRows, recent_calls: iRows, phone: String(phoneRaw || '') };
 }
 
+// The display name of a queue, from the descr of queues_config. The names
+// change rarely, they are cached for a minute. A queue without a
+// description answers with its extension, so the client always gets a
+// label for a call that came through a queue.
+let queueNamesCache = { at: 0, names: {} };
+async function queueNameFor(queueNumber) {
+    const num = String(queueNumber || '').trim();
+    if (!num) return '';
+    if (Date.now() - queueNamesCache.at > 60000) {
+        try {
+            queueNamesCache = { at: Date.now(), names: await db.queueNames() };
+        } catch (e) {
+            queueNamesCache.at = Date.now();
+        }
+    }
+    return queueNamesCache.names[num] || num;
+}
+
 async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
     try {
         if (!shouldEmitScreenPop(agentExt, callerId, uniqueid)) return;
         const lookup = await crmLookupByPhone(callerId);
         const customer = lookup.customer;
         const last = (lookup.interactions && lookup.interactions[0]) || null;
+        // the queue of this call: the session carries it from the ami events
+        // (AgentCalled, AgentConnect), the map by uniqueid is the fallback
+        const entry = sessions.get(String(agentExt || ''));
+        const queueNumber = (entry && entry.session && entry.session.activeQueue)
+            || callQueueByUid.get(String(uniqueid || '')) || '';
+        const queueName = await queueNameFor(queueNumber);
         broadcastCrmScreenPop({
             type: 'crm_screen_pop',
             agent_ext: String(agentExt || ''),
             caller_id: String(callerId || ''),
             uniqueid: String(uniqueid || ''),
+            queue_name: queueName,
             is_new: !customer,
             customer: customer ? {
                 id: customer.id,

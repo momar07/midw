@@ -146,6 +146,20 @@ async function listQueues() {
     return rows.map((row) => String(row.extension));
 }
 
+// The display names of the queues of Issabel (the descr of queues_config),
+// by extension. A queue without a description is absent from the map, the
+// caller falls back to the extension itself.
+async function queueNames() {
+    const [rows] = await pool.execute(
+        'SELECT extension, descr FROM queues_config ORDER BY extension');
+    const names = {};
+    for (const row of rows) {
+        const descr = String(row.descr || '').trim();
+        if (descr) names[String(row.extension)] = descr;
+    }
+    return names;
+}
+
 // Every agent with the queues it belongs to.
 async function allAgents() {
     const [agents] = await pool.execute(
@@ -895,6 +909,7 @@ module.exports = {
     knownAgents,
     listExtensions,
     listQueues,
+    queueNames,
     allAgentQueues,
     allAgents,
     createAgent,
