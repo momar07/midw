@@ -14,6 +14,7 @@
 // The data comes from the Issabel database, the middleware only reads it.
 
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
@@ -1838,6 +1839,99 @@ app.post('/simulate/state', async (req, res) => {
 // with an "event" field), as the crm_screen_pop copy above. Behind the
 // same internal-token auth as the admin hook: the ADMIN_TOKEN as a Bearer
 // header; with no ADMIN_TOKEN configured the route is off (404).
+// ---- WhatsApp service calls (phonebar Phase 2) -----------------------
+// The reverse direction of the Phase 1 bridge: this middleware calls
+// the WhatsApp service's internal API (X-Internal-Token = the service's
+// INTERNAL_API_TOKEN, configured here as WA_INTERNAL_TOKEN). Used for
+// the login snapshot ping and the quick-reply forward. Best-effort by
+// design: a down WhatsApp service must never disturb call handling.
+function waInternalPost(pathName, payload, timeoutMs) {
+    return new Promise((resolve) => {
+        if (!config.waInternalUrl || !config.waInternalToken) {
+            return resolve({ ok: false, status: 0, json: null, error: 'the WhatsApp link is not configured' });
+        }
+        let url;
+        try {
+            url = new URL(config.waInternalUrl + pathName);
+        } catch (e) {
+            return resolve({ ok: false, status: 0, json: null, error: 'bad WA_INTERNAL_URL' });
+        }
+        const body = JSON.stringify(payload || {});
+        const lib = url.protocol === 'https:' ? https : http;
+        const req = lib.request({
+            method: 'POST',
+            hostname: url.hostname,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
+            path: url.pathname + url.search,
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+                'X-Internal-Token': config.waInternalToken,
+            },
+            timeout: timeoutMs || 10000,
+        }, (res) => {
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () => {
+                let json = null;
+                try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* non-JSON */ }
+                const ok = res.statusCode >= 200 && res.statusCode < 300;
+                resolve({ ok, status: res.statusCode, json, error: ok ? null : ((json && (json.message || json.error)) || 'HTTP ' + res.statusCode) });
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('timeout')));
+        req.on('error', (e) => resolve({ ok: false, status: 0, json: null, error: e.message }));
+        req.write(body);
+        req.end();
+    });
+}
+
+// The identity the WhatsApp service knows this agent by:
+// cc_agents.issabel_username when set, else the session's login
+// username (the same assumption Phase 1 notifications rely on).
+async function waIdentityFor(session) {
+    let issabelUsername = '';
+    try {
+        const [rows] = await db.pool.execute('SELECT issabel_username FROM cc_agents WHERE id = ? LIMIT 1', [session.agentId]);
+        if (rows.length && rows[0].issabel_username) issabelUsername = String(rows[0].issabel_username);
+    } catch (e) { /* identity falls back to the login username */ }
+    return { username: session.username, issabel_username: issabelUsername || session.username };
+}
+
+// An agent just came online: ask the WhatsApp service to push their
+// current unread snapshot, so the phonebar badge is correct from the
+// first second instead of waiting for the next WhatsApp event. A 404
+// (the agent never opened the WhatsApp web UI, so the service has no
+// identity for them yet) is expected and stays quiet.
+function pingWhatsAppSnapshot(session) {
+    if (!config.waInternalUrl || !config.waInternalToken) return;
+    waIdentityFor(session)
+        .then((identity) => waInternalPost('/internal/phonebar/snapshot', identity, 5000))
+        .then((r) => {
+            if (r && !r.ok && r.status !== 404) console.error('whatsapp bridge: the snapshot ping failed: ' + (r.error || r.status));
+        })
+        .catch((e) => console.error('whatsapp bridge: the snapshot ping failed: ' + e.message));
+}
+
+// A quick reply typed in the phonebar (Phase 2): forward it to the
+// WhatsApp service — which runs it through the module's own send path
+// (ownership checks, the outbound queue, every guardrail) — and relay
+// the outcome back to the bar on the same socket.
+async function handleWhatsAppReply(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const text = String(msg.text || '').trim();
+    const answer = (ok, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_reply_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId) || !text) return answer(false, 'invalid reply');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/reply', Object.assign({}, identity, { ticket_id: ticketId, text }), 15000);
+    if (r.ok && r.json && r.json.ok) return answer(true, null);
+    return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'send failed');
+}
+
 // Internal: create a CRM ticket from the WhatsApp module (escalation
 // from inside a chat). Same trust as /internal/whatsapp/events — the
 // middleware ADMIN_TOKEN, server-to-server only. The customer is found
@@ -2090,6 +2184,9 @@ wss.on('connection', (ws, req, payload) => {
     else { todayAgentStatsByKey.set(session.extension, { callsTaken: 0, callsMade: 0, pauseCount: 0 }); }
     const entry = { ws: ws, session: session };
     sessions.set(session.extension, entry);
+    // phonebar Phase 2: the agent's WhatsApp badge should be correct
+    // from the first second of the session, not from the next event
+    pingWhatsAppSnapshot(session);
     if (!abuseStatsByExt.has(session.extension)) {
         abuseStatsByExt.set(session.extension, { abuse_timeout: 0, abuse_declined: 0, abuse_total: 0, abuse_recent: [] });
     }
@@ -2106,6 +2203,12 @@ wss.on('connection', (ws, req, payload) => {
         }
         if (msg.event === 'pong') {
             session.missed = 0;
+            return;
+        }
+        if (msg.event === 'whatsapp_reply') {
+            // phonebar Phase 2 quick reply; the agent identity comes
+            // from this session, never from the payload
+            handleWhatsAppReply(entry, msg).catch((e) => console.error('whatsapp bridge: reply failed: ' + e.message));
             return;
         }
         if (msg.event !== 'status_change') {

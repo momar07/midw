@@ -35,6 +35,13 @@ module.exports = {
     // the token of the sessions and of the admin hook
     tokenSecret: str('TOKEN_SECRET', 'change-me-please'),
     adminToken: str('ADMIN_TOKEN', ''),
+
+    // the WhatsApp service's internal API (phonebar Phase 2): the login
+    // snapshot ping and the quick-reply forward call it with the
+    // service's INTERNAL_API_TOKEN. Empty = the Phase 2 legs stay off
+    // (Phase 1 notifications, which travel the other way, are unaffected)
+    waInternalUrl: str('WA_INTERNAL_URL', '').replace(/\/+$/, ''),
+    waInternalToken: str('WA_INTERNAL_TOKEN', ''),
     tokenTtlSeconds: num('TOKEN_TTL', 12 * 3600),
 
     // the keepalive
