@@ -1838,6 +1838,52 @@ app.post('/simulate/state', async (req, res) => {
 // with an "event" field), as the crm_screen_pop copy above. Behind the
 // same internal-token auth as the admin hook: the ADMIN_TOKEN as a Bearer
 // header; with no ADMIN_TOKEN configured the route is off (404).
+// Internal: create a CRM ticket from the WhatsApp module (escalation
+// from inside a chat). Same trust as /internal/whatsapp/events — the
+// middleware ADMIN_TOKEN, server-to-server only. The customer is found
+// by normalized phone, or created on the spot when this is their first
+// CRM record.
+app.post('/internal/crm/tickets', async (req, res) => {
+    if (!config.adminToken) {
+        return res.status(404).json({ error: 'the admin hook is off' });
+    }
+    const header = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (header !== config.adminToken) {
+        return res.status(401).json({ error: 'unauthorized' });
+    }
+    try {
+        const b = req.body || {};
+        const phone = String(b.phone || '').trim();
+        const normalized = normalizePhone(phone);
+        if (!phone || !normalized) return res.status(400).json({ error: 'phone is required' });
+        const name = String(b.name || '').trim() || phone;
+        const subject = String(b.subject || '').trim() || ('WhatsApp escalation — ' + name);
+        const priority = ['Low', 'Medium', 'High', 'Urgent'].indexOf(String(b.priority || 'High')) !== -1 ? String(b.priority || 'High') : 'High';
+        const status = ['Open', 'In Progress', 'Waiting Customer', 'Escalated', 'Closed'].indexOf(String(b.status || 'Escalated')) !== -1 ? String(b.status || 'Escalated') : 'Escalated';
+        const desc = b.description ? String(b.description) : null;
+        const [cust] = await db.pool.execute('SELECT id FROM crm_customers WHERE phone_normalized = ? LIMIT 1', [normalized]);
+        let customerId;
+        let customerCreated = false;
+        if (cust.length) {
+            customerId = cust[0].id;
+        } else {
+            const [r] = await db.pool.execute(
+                'INSERT INTO crm_customers (full_name, primary_phone, phone_normalized, secondary_phone, company, email, tag, address, custom_fields, assigned_agent_id, category_code) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                [name, phone, normalized, null, null, b.email ? String(b.email).trim() : null, 'NORMAL', null, null, null, 'NORMAL']);
+            customerId = r.insertId;
+            customerCreated = true;
+        }
+        const [r] = await db.pool.execute(
+            'INSERT INTO crm_tickets (customer_id, subject, category, priority, status, created_by_agent_id, assigned_agent_id, due_at, description) VALUES (?,?,?,?,?,?,?,?,?)',
+            [customerId, subject, 'WhatsApp', priority, status, null, null, null, desc]);
+        const ticketNumber = 'TCK-' + (1000 + r.insertId);
+        await db.pool.execute('UPDATE crm_tickets SET ticket_number = ? WHERE id = ?', [ticketNumber, r.insertId]);
+        await db.pool.execute('INSERT INTO crm_ticket_logs (ticket_id, action_type, from_agent_id, to_agent_id, old_status, new_status, note) VALUES (?,?,?,?,?,?,?)',
+            [r.insertId, 'created', null, null, null, status, 'Created from the WhatsApp module (escalation)']);
+        res.status(201).json({ ok: true, id: r.insertId, ticket_number: ticketNumber, customer_id: customerId, customer_created: customerCreated });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/internal/whatsapp/events', async (req, res) => {
     if (!config.adminToken) {
         return res.status(404).json({ error: 'the admin hook is off' });
