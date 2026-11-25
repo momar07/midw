@@ -1,0 +1,2747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Call Center Supervisor Dashboard</title>
+<link rel="stylesheet" href="vendor/bootstrap.min.css">
+<style>
+  html, body { min-height: 100%; }
+  body { background: #f1f3f4; overflow-y: auto; }
+  .navbar { background: #303641; }
+  .navbar-brand { color: #fff; }
+  .panel { border-radius: 6px; }
+  .badge-status { font-size: .85rem; }
+  .table thead th { white-space: nowrap; }
+  .table-responsive { overflow-x: auto; }
+  .mono { font-family: Consolas, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  #status-line { font-size: .9rem; }
+  .view { display: none; }
+  .view.active { display: block; }
+  #view-report-builder.active { display: flex; flex-direction: column; height: calc(100vh - 56px); min-height: 520px; overflow: hidden; padding-bottom: 12px; }
+  .main-wrap { padding-bottom: 1rem; overflow-y: auto; max-height: calc(100vh - 56px); }
+  #view-report-builder { overflow: hidden; }
+  #rb-sql { min-height: 60px; max-height: none; resize: vertical; flex: 1; }
+  #view-report-builder .card-body { padding: 12px 14px; }
+  #rb-top-pane { min-height: 220px; overflow: hidden; }
+  #rb-top-pane .rb-top-grid { height: 100%; }
+  #rb-top-pane .rb-card-fill { height: 100%; margin-bottom: 0 !important; }
+  #rb-top-pane .rb-form-body { display: flex; flex-direction: column; height: 100%; }
+  #rb-top-pane .rb-sql-wrap { flex: 1; min-height: 60px; display: flex; flex-direction: column; margin-bottom: .5rem; }
+  #rb-top-pane .rb-sql-wrap textarea { flex: 1; min-height: 60px; }
+  #rb-bottom-pane { flex: 1 1 0; min-height: 160px; display: flex; flex-direction: column; overflow: hidden; }
+  #rb-bottom-pane .card { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+  #rb-bottom-pane .card-body { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+  .rb-saved-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: auto; }
+  .rb-saved-scroll thead th { position: sticky; top: 0; background: #fff; z-index: 2; box-shadow: inset 0 -1px 0 #dee2e6; }
+  #rb-h-splitter { height: 10px; min-height: 10px; width: 100%; cursor: row-resize; user-select: none; display: flex; align-items: center; justify-content: center; flex: 0 0 10px; }
+  #rb-h-splitter .rb-grip { width: 48px; height: 4px; border-radius: 2px; background: #cbd5e1; transition: background .15s; }
+  #rb-h-splitter:hover .rb-grip, #rb-h-splitter.active .rb-grip { background: #3b82f6; }
+  .agent-combo { position: relative; display: inline-block; width: 100%; }
+  .agent-combo input { width: 100%; padding-right: 3.2rem; }
+  .agent-combo .ac-chev { position: absolute; right: 1.8rem; top: 50%; transform: translateY(-50%); color: #888; pointer-events: none; font-size: .8rem; }
+  .agent-combo .ac-clear { position: absolute; right: .45rem; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: #888; font-size: 1rem; line-height: 1; padding: 0 .15rem; cursor: pointer; display: none; }
+  .agent-combo.has-value .ac-clear { display: block; }
+  .agent-combo .ac-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #ced4da; border-radius: .375rem; box-shadow: 0 4px 12px rgba(0,0,0,.12); z-index: 2000; display: none; }
+  .agent-combo.open .ac-list { display: block; }
+  .agent-combo .ac-item { padding: .35rem .6rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-combo .ac-item:hover, .agent-combo .ac-item.active { background: #e9f2ff; }
+  .agent-combo .ac-empty { padding: .35rem .6rem; color: #888; }
+
+  .kpi-card { color:#fff; border:0; border-radius:8px; min-height:92px; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .kpi-card .card-body { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; }
+  .kpi-icon { font-size:26px; opacity:.95; width:38px; text-align:center; line-height:1; }
+  .kpi-label { font-size:.85rem; opacity:.95; }
+  .kpi-value { font-size:1.9rem; font-weight:700; line-height:1; }
+  .bg-waiting { background:#f39c12; }
+  .bg-active { background:#e74c3c; }
+  .bg-completed { background:#2ecc71; }
+  .bg-abandoned { background:#c9a227; }
+  .bg-logged { background:#27ae60; }
+  .bg-paused { background:#8e44ad; }
+  .bg-total { background:#3498db; }
+  .bg-avgqsa { background:#7d3c98; }
+  .bg-avgqtt { background:#2980b9; }
+  .monitor-panel { background:#fff; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .monitor-panel .nav-tabs .nav-link { color:#5e3a87; font-weight:600; }
+  .monitor-panel .nav-tabs .nav-link.active { color:#5e3a87; border-top:3px solid #5e3a87; }
+  .badge-ready { background:#27ae60; color:#fff; }
+  .badge-task { background:#d35400; color:#fff; }
+  .badge-pause { background:#f39c12; color:#222; }
+  .badge-talking { background:#c0392b; color:#fff; }
+  .pill { display:inline-block; padding:.18rem .45rem; border-radius:4px; color:#fff; font-size:.78rem; font-weight:600; margin:0 .2rem .1rem 0; }
+  .pill-blue { background:#3498db; }
+  .pill-red { background:#e74c3c; }
+  .cell-waiting { background:#fff3cd; font-weight:600; }
+  .cell-completed { background:#d4edda; font-weight:600; }
+  .cell-abandoned { background:#f8d7da; font-weight:600; }
+  .cell-sla { background:#d6eaf8; font-weight:600; }
+  .sla-panel { padding: .5rem .75rem; }
+  .sla-row { display:flex; flex-wrap:wrap; justify-content:space-around; align-items:center; gap:.5rem 1rem; }
+  .gauge-wrap { text-align:center; min-width:120px; }
+  .gauge { width:72px; height:72px; position:relative; margin:0 auto .15rem; }
+  .gauge svg { transform:rotate(-90deg); }
+  .gauge .center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; line-height:1.1; }
+  .gauge .pct { font-weight:700; font-size:.85rem; }
+  .gauge .sub { font-size:.65rem; color:#666; }
+  .gauge-title { font-size:.8rem; font-weight:600; }
+  .gauge-title .text-muted { font-weight:500; }
+  .monitor-table-wrap { max-height:450px; overflow-y:auto; overflow-x:auto; }
+  .monitor-table-wrap thead th { position: sticky; top: 0; background:#fff; z-index:10; box-shadow: inset 0 -1px 0 #dee2e6; }
+  .filter-bar .form-label { font-size:.8rem; margin-bottom:.2rem; color:#666; }
+  .small-muted { font-size:.8rem; color:#777; }
+  .report-scroll { max-height:540px; overflow-y:auto; overflow-x:auto; }
+  .report-scroll thead th { position:sticky; top:0; background:#fff; z-index:2; box-shadow: inset 0 -1px 0 #dee2e6; }
+  .report-tabs .nav-link { font-weight:600; }
+  .report-tabs .nav-link.active { border-bottom:3px solid #5e3a87; color:#5e3a87; }
+  .reason-badge-timeout { background:#f39c12; color:#222; }
+  .reason-badge-declined { background:#e74c3c; color:#fff; }
+
+  #waiting-card { cursor: pointer; }
+  .waiting-pop { font-size:.8rem; min-width:260px; }
+  .waiting-pop table { margin:0; }
+  .waiting-pop th, .waiting-pop td { padding:.2rem .4rem; white-space:nowrap; }
+
+  .crm-nav { gap:.25rem; }
+  .crm-nav .nav-link { color: rgba(255,255,255,.8); font-weight:600; padding:.35rem .7rem; border-radius:4px; }
+  .crm-nav .nav-link.active, .crm-nav .nav-link:hover { color:#fff; background: rgba(255,255,255,.12); }
+  #crm-screen-pop-banner { position: fixed; top: 56px; left: 50%; transform: translateX(-50%) translateY(-140%); width: min(1100px, calc(100% - 24px)); z-index: 3000; transition: transform .25s ease; border-left: 5px solid #f59e0b; }
+  #crm-screen-pop-banner.show { transform: translateX(-50%) translateY(0); }
+  #crm-screen-pop-banner .crm-pop-main { font-size: 1rem; }
+  #crm-screen-pop-banner .crm-pop-label { font-weight: 700; color: #334155; }
+  .crm-ring { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:#fff7ed; color:#c2410c; font-size:16px; animation: crm-pulse 1.2s infinite; flex:0 0 auto; }
+  @keyframes crm-pulse { 0%{ box-shadow:0 0 0 0 rgba(245,158,11,.45);} 70%{ box-shadow:0 0 0 10px rgba(245,158,11,0);} 100%{ box-shadow:0 0 0 0 rgba(245,158,11,0);} }
+  .crm-badge-vip { background:#fef3c7; color:#92400e; }
+  .crm-badge-blacklist { background:#fee2e2; color:#991b1b; }
+  .crm-badge-normal { background:#f1f5f9; color:#475569; }
+  #view-crm.active { height: calc(100vh - 115px); min-height: 560px; }
+  .crm-layout { display:grid; grid-template-columns: 32% 1fr; gap:16px; align-items: stretch; min-height: calc(100vh - 115px); height: 100%; }
+  @media (max-width: 992px){ #view-crm.active { height: auto; } .crm-layout { grid-template-columns: 1fr; min-height: 0; height: auto; } }
+  .crm-left-card { height: 100%; display:flex; flex-direction:column; min-height: 0; }
+  .crm-right-col { height: 100%; min-height: 0; gap: 12px !important; }
+  .crm-list { flex: 1 1 0; min-height: 0; overflow:auto; }
+  .crm-item { cursor:pointer; border-left: 3px solid transparent; }
+  .crm-item.active { background:#eff6ff; border-left:3px solid #2563eb; }
+  .crm-item .crm-name { color:#1f2937; font-weight:600; }
+  .crm-item.active .crm-name { color:#0f172a; font-weight:700; }
+  .crm-timeline-card { flex: 1 1 0; min-height: 220px; display:flex; flex-direction:column; }
+  .crm-timeline-card .card-body { flex: 1 1 0; min-height: 0; }
+  .crm-timeline { height: 100%; max-height: none; overflow:auto; }
+  .crm-form-compact .form-label { margin-bottom: 2px; font-size: .82rem; color:#475569; }
+  .crm-form-compact .form-control, .crm-form-compact .form-select { padding-top: .3rem; padding-bottom: .3rem; }
+  .crm-form-compact .row { --bs-gutter-y: .45rem; }
+  #crm-address { height: 38px; }
+  #crm-log-notes { height: 58px; min-height: 58px; resize: vertical; }
+  .crm-copy-btn { border: 1px solid #d0d7de; background:#fff; color:#475569; border-radius:6px; padding: .3rem .45rem; line-height:1; }
+  .crm-copy-btn:hover { background:#f8fafc; color:#0f172a; }
+  #crm-copy-status { min-width: 54px; font-size: .78rem; color:#059669; font-weight:600; opacity:0; transition: opacity .15s ease; }
+  #crm-copy-status.show { opacity:1; }
+  .crm-sticky-top { position: sticky; top: 0; background:#fff; z-index:2; }
+
+  body.agent-mode .admin-only { display:none !important; }
+  .agent-only { display:none !important; }
+  body.agent-mode .agent-only { display:inline-flex !important; }
+  body.agent-mode li.agent-only, body.agent-mode div.agent-only { display:block !important; }
+  #crm-toast { position: fixed; right: 16px; bottom: 16px; z-index: 4000; min-width: 320px; max-width: 420px; display:none; }
+  #crm-toast.show { display:block; }
+  .crm-filter-pill { border:1px solid #d0d7de; background:#fff; color:#334155; border-radius:999px; padding:.2rem .6rem; font-size:.8rem; }
+  .crm-filter-pill.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .crm-subtabs .nav-link { padding:.35rem .7rem; font-weight:600; cursor:pointer; }
+  .crm-subtabs .nav-link.active { color:#5e3a87; border-bottom:3px solid #5e3a87; }
+  .crm-due-soon { background:#fff7ed; }
+  .crm-due-overdue { background:#fef2f2; }
+  .crm-call-btn { border:1px solid #86efac; background:#ecfdf5; color:#166534; border-radius:6px; padding:.3rem .45rem; line-height:1; }
+  .crm-call-btn:hover { background:#dcfce7; }
+  #login-overlay { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:5000; display:none; align-items:center; justify-content:center; }
+  #login-overlay.show { display:flex; }
+
+
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark mb-3">
+  <div class="container-fluid">
+    <span class="navbar-brand" id="app-brand">Call Center Supervisor Dashboard</span>
+    <ul class="nav crm-nav ms-3 me-auto" id="main-nav">
+      <li class="nav-item admin-only"><a class="nav-link active" href="#monitor" data-view="monitor" onclick="event.preventDefault();showView('monitor')">Monitor</a></li>
+      <li class="nav-item admin-only"><a class="nav-link" href="#reports" data-view="reports" onclick="event.preventDefault();showView('reports')">Reports</a></li>
+      <li class="nav-item admin-only"><a class="nav-link" href="#report-builder" data-view="report-builder" onclick="event.preventDefault();showView('report-builder')">Report Builder</a></li>
+      <li class="nav-item"><a class="nav-link" href="#crm" data-view="crm" onclick="event.preventDefault();showView('crm')">CRM</a></li>
+      <li class="nav-item agent-only"><a class="nav-link" href="#crm-tickets" data-view="crm-tickets" onclick="event.preventDefault();showView('crm-tickets')">Tickets Queue</a></li>
+      <li class="nav-item admin-only"><a class="nav-link" href="#agents" data-view="agents" onclick="event.preventDefault();showView('agents')">Agents</a></li>
+      <li class="nav-item admin-only"><a class="nav-link" href="#pauses" data-view="pauses" onclick="event.preventDefault();showView('pauses')">Pauses</a></li>
+    </ul>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge text-bg-secondary" id="identity-badge">Not signed in</span>
+      <span class="navbar-text" id="status-line">not connected</span>
+    </div>
+  </div>
+</nav>
+
+<div id="crm-toast" class="alert alert-info shadow border"><div class="d-flex justify-content-between align-items-start gap-2"><div><strong id="crm-toast-title">Ticket</strong><div class="small" id="crm-toast-body"></div></div><button type="button" class="btn-close" id="crm-toast-close"></button></div></div>
+
+<div id="crm-screen-pop-banner" class="alert alert-warning shadow border-0 mb-0 d-none" role="alert">
+  <div class="d-flex justify-content-between align-items-start gap-3">
+    <div class="d-flex align-items-start gap-2 flex-grow-1">
+      <span class="crm-ring" aria-hidden="true">📞</span>
+      <div class="flex-grow-1 crm-pop-main">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+          <strong id="crm-pop-title" style="font-size:1.05rem;color:#0f172a">Incoming Call</strong>
+          <span id="crm-pop-tag" class="badge crm-badge-normal">New Caller</span>
+          <span class="small"><span class="crm-pop-label">Caller:</span> <span id="crm-pop-caller" class="mono fw-semibold"></span></span>
+          <span class="small"><span class="crm-pop-label">Agent:</span> <span id="crm-pop-agent" class="mono"></span></span>
+        </div>
+        <div class="small" style="color:#334155" id="crm-pop-last">No previous interaction.</div>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-primary" id="crm-pop-open">Open in CRM</button>
+      <button type="button" class="btn-close" aria-label="Close" id="crm-pop-dismiss"></button>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid main-wrap">
+
+  <!-- the live monitor -->
+  <div class="view" id="view-monitor">
+    <div class="d-flex justify-content-end mb-2"><span class="text-muted small" id="updated"></span></div>
+
+    <div class="row g-2 mb-2">
+      <div class="col-6 col-md-4 col-xl"><div class="card kpi-card bg-waiting" id="waiting-card" tabindex="0"><div class="card-body"><div><div class="kpi-icon">🕒</div><div class="kpi-label">Waiting QC</div></div><div class="kpi-value" id="m-waiting">0</div></div></div></div>
+      <div class="col-6 col-md-4 col-xl"><div class="card kpi-card bg-active"><div class="card-body"><div><div class="kpi-icon">📞</div><div class="kpi-label">Active QC</div></div><div class="kpi-value" id="m-active">0</div></div></div></div>
+      <div class="col-6 col-md-4 col-xl"><div class="card kpi-card bg-completed"><div class="card-body"><div><div class="kpi-icon">😊</div><div class="kpi-label">Completed QC</div></div><div class="kpi-value" id="m-completed">—</div></div></div></div>
+      <div class="col-6 col-md-4 col-xl"><div class="card kpi-card bg-abandoned"><div class="card-body"><div><div class="kpi-icon">☹</div><div class="kpi-label">Abandoned QC</div></div><div class="kpi-value" id="m-abandoned">—</div></div></div></div>
+      <div class="col-6 col-md-4 col-xl"><div class="card kpi-card bg-total"><div class="card-body"><div><div class="kpi-icon">🎯</div><div class="kpi-label">Total QC</div></div><div class="kpi-value" id="m-total">—</div></div></div></div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3 col-xl"><div class="card kpi-card bg-logged"><div class="card-body"><div><div class="kpi-icon">👥</div><div class="kpi-label">Agents Logged</div></div><div class="kpi-value" id="m-logged">0</div></div></div></div>
+      <div class="col-6 col-md-3 col-xl"><div class="card kpi-card bg-paused"><div class="card-body"><div><div class="kpi-icon">☕</div><div class="kpi-label">Agents Paused</div></div><div class="kpi-value" id="m-paused">0</div></div></div></div>
+      <div class="col-6 col-md-3 col-xl"><div class="card kpi-card bg-avgqsa"><div class="card-body"><div><div class="kpi-icon">⏱</div><div class="kpi-label">AVG QSA</div></div><div class="kpi-value" style="font-size:1.5rem" id="m-qsa">—</div></div></div></div>
+      <div class="col-6 col-md-3 col-xl"><div class="card kpi-card bg-avgqtt"><div class="card-body"><div><div class="kpi-icon">🚩</div><div class="kpi-label">AVG QTT</div></div><div class="kpi-value" style="font-size:1.5rem" id="m-qtt">—</div></div></div></div>
+    </div>
+
+    <div class="monitor-panel sla-panel mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <h6 class="mb-0">Global Service Level</h6>
+        <span class="small-muted">from queue service level</span>
+      </div>
+      <div class="sla-row">
+        <div class="gauge-wrap"><div class="gauge" id="g-s10"></div><div class="gauge-title">SL 90% <span class="text-muted">[10s]</span></div></div>
+        <div class="gauge-wrap"><div class="gauge" id="g-s20"></div><div class="gauge-title">SL 80% <span class="text-muted">[20s]</span></div></div>
+        <div class="gauge-wrap"><div class="gauge" id="g-s30"></div><div class="gauge-title">SL 70% <span class="text-muted">[30s]</span></div></div>
+        <div class="gauge-wrap"><div class="gauge" id="g-s30p"></div><div class="gauge-title">SL 70%+ <span class="text-muted">[30+s]</span></div></div>
+      </div>
+    </div>
+
+    <div class="monitor-panel">
+      <ul class="nav nav-tabs px-3 pt-2" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#agents-tab" type="button">Agents</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#queues-tab" type="button">Queues</button></li>
+      </ul>
+      <div class="tab-content p-3">
+        <div class="tab-pane fade show active" id="agents-tab">
+          <div class="row g-2 align-items-end filter-bar mb-3">
+            <div class="col-auto">
+              <label class="form-label">Entries</label>
+              <select id="a-entries" class="form-select form-select-sm" style="width:90px"><option selected>10</option><option>25</option><option>50</option></select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Search Status</label>
+              <select id="a-status" class="form-select form-select-sm" style="width:150px">
+                <option value="">Select</option><option>READY</option><option>PAUSE</option><option>TASK</option><option>TALKING</option><option>RINGING</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Search Agent</label>
+              <input id="a-search" class="form-control form-control-sm" placeholder="Search agent...">
+            </div>
+            <div class="col-auto ms-auto d-flex gap-2">
+              <button class="btn btn-sm text-white" style="background:#3498db" onclick="pauseAll()">Pause ALL</button>
+              <button class="btn btn-sm text-white" style="background:#8e44ad" onclick="resumeAll()">Resume ALL</button>
+            </div>
+          </div>
+          <div class="monitor-table-wrap">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light"><tr><th>Name</th><th>Status</th><th>Queue</th><th>Time</th><th>Calls</th><th>Info</th><th>Action</th></tr></thead>
+              <tbody id="m-agent-rows"><tr><td colspan="7" class="text-center text-muted py-4">no agent</td></tr></tbody>
+            </table>
+          </div>
+          <div id="agent-action-menu" class="dropdown-menu shadow" style="position:fixed; z-index:2000; min-width:170px;"></div>
+          <div class="d-flex justify-content-between align-items-center mt-2 small-muted">
+            <span id="a-count"></span>
+            <div class="btn-group"><button class="btn btn-sm btn-outline-secondary" onclick="moveMonitorAgents(-1)">Previous</button><button class="btn btn-sm btn-outline-secondary" onclick="moveMonitorAgents(1)">Next</button></div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="queues-tab">
+          <div class="row g-2 align-items-end filter-bar mb-3">
+            <div class="col-auto">
+              <label class="form-label">Entries</label>
+              <select id="q-entries" class="form-select form-select-sm" style="width:90px"><option selected>10</option><option>25</option><option>50</option></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Search</label>
+              <input id="q-search" class="form-control form-control-sm" placeholder="Search queue...">
+            </div>
+          </div>
+          <div class="monitor-table-wrap">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light"><tr><th>Queue</th><th>Waiting</th><th>In Call</th><th>C</th><th>A</th><th>T</th><th>SLA</th></tr></thead>
+              <tbody id="m-queue-rows"><tr><td colspan="7" class="text-center text-muted py-4">no queue</td></tr></tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2 small-muted">
+            <span id="q-count"></span>
+            <div class="btn-group"><button class="btn btn-sm btn-outline-secondary" onclick="moveMonitorQueues(-1)">Previous</button><button class="btn btn-sm btn-outline-secondary" onclick="moveMonitorQueues(1)">Next</button></div>
+          </div>
+          <div class="mt-2" id="queue-callers"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the agents of the call center -->
+  <div class="view" id="view-agents">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Manage Agents</span>
+        <button class="btn btn-sm btn-primary" onclick="openAgent()">Create Agent</button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Agent</th><th>Issabel User</th><th>Extension</th><th>Queues</th><th>Active</th><th class="text-end">Action</th></tr></thead>
+            <tbody id="agent-rows"><tr><td colspan="5" class="text-center text-muted py-4">no agent</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the pause reasons of the breaks -->
+  <div class="view" id="view-pauses">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Pause Reasons</span>
+        <button class="btn btn-sm btn-primary" onclick="openReason()">Create Pause Reason</button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Reason</th><th>Description</th><th>Active</th><th class="text-end">Action</th></tr></thead>
+            <tbody id="reason-rows"><tr><td colspan="4" class="text-center text-muted py-4">no reason</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the reports -->
+  <div class="view" id="view-reports">
+    <div class="card mb-2">
+      <div class="card-body py-2">
+        <ul class="nav nav-tabs report-tabs border-0" id="report-cat-tabs">
+          <li class="nav-item"><button class="nav-link active" data-cat="agents" onclick="setReportCategory('agents')">Agents Reports</button></li>
+          <li class="nav-item"><button class="nav-link" data-cat="queues" onclick="setReportCategory('queues')">Queues Reports</button></li>
+          <li class="nav-item"><button class="nav-link" data-cat="calls" onclick="setReportCategory('calls')">Calls Reports</button></li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3"><label class="form-label" for="report-sub">Report</label><select class="form-select" id="report-sub" onchange="onReportSubChange()"></select></div>
+          <div class="col-md-2"><label class="form-label" for="report-from">From</label><input type="date" class="form-control" id="report-from"></div>
+          <div class="col-md-2"><label class="form-label" for="report-to">To</label><input type="date" class="form-control" id="report-to"></div>
+          <div class="col-md-2" id="wrap-report-agent"><label class="form-label" for="report-agent">Agent</label><select class="form-select" id="report-agent"><option value="">All agents</option></select></div>
+          <div class="col-md-2" id="wrap-report-queue" style="display:none"><label class="form-label" for="report-queue">Queue</label><select class="form-select" id="report-queue"><option value="">All queues</option></select></div>
+          <div class="col-md-2" id="wrap-report-reason" style="display:none"><label class="form-label" for="report-reason">Reason</label><select class="form-select" id="report-reason"><option value="ALL">All</option><option value="TIMEOUT">TIMEOUT</option><option value="DECLINED">DECLINED</option></select></div>
+        </div>
+        <div class="mt-3 d-flex flex-wrap gap-2">
+          <button class="btn btn-primary" onclick="loadReports(true)">Apply</button>
+          <button class="btn btn-outline-secondary" onclick="resetReports()">Reset</button>
+          <button class="btn btn-outline-success" onclick="exportReport('csv')">Export CSV</button>
+          <button class="btn btn-outline-success" onclick="exportReport('excel')">Export Excel</button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="report-scroll">
+          <table class="table table-hover align-middle mb-0">
+            <thead id="report-head" class="table-light"></thead>
+            <tbody id="report-rows"><tr><td class="text-center text-muted py-4">no line</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted mb-0" for="report-entries">Entries</label>
+          <select id="report-entries" class="form-select form-select-sm" style="width:auto" onchange="onReportEntriesChange()"><option value="10">10</option><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option></select>
+        </div>
+        <span class="text-muted small" id="report-count"></span>
+        <div class="btn-group"><button class="btn btn-sm btn-outline-secondary" id="report-prev" onclick="moveReports(-1)">Previous</button><button class="btn btn-sm btn-outline-secondary" id="report-next" onclick="moveReports(1)">Next</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- custom report builder -->
+  <div class="view" id="view-report-builder">
+    <div id="rb-top-pane" style="flex:0 0 56%;min-height:220px;overflow:hidden;">
+      <div class="rb-top-grid" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;width:100%;height:100%;align-items:stretch;">
+        <div style="min-width:0;height:100%;">
+          <div class="card rb-card-fill" style="width:100%;box-sizing:border-box;height:100%;display:flex;flex-direction:column;">
+            <div class="card-header"><strong id="rb-form-title">Create Custom Report</strong></div>
+            <div class="card-body rb-form-body">
+              <input type="hidden" id="rb-id" value="">
+              <div class="mb-2"><label class="form-label" for="rb-title">Report Title</label><input type="text" class="form-control" id="rb-title" placeholder="My custom report"></div>
+              <div class="mb-2"><label class="form-label">Category</label>
+                <ul class="nav nav-tabs report-tabs" id="rb-cat-tabs">
+                  <li class="nav-item"><button type="button" class="nav-link active" data-cat="agents" onclick="rbSetCategory('agents')">Agents Reports</button></li>
+                  <li class="nav-item"><button type="button" class="nav-link" data-cat="queues" onclick="rbSetCategory('queues')">Queues Reports</button></li>
+                  <li class="nav-item"><button type="button" class="nav-link" data-cat="calls" onclick="rbSetCategory('calls')">Calls Reports</button></li>
+                </ul>
+              </div>
+              <div class="mb-2"><label class="form-label">Enabled Filters</label>
+                <div class="d-flex flex-wrap gap-3">
+                  <div class="form-check"><input class="form-check-input" type="checkbox" id="rb-f-date" checked disabled><label class="form-check-label" for="rb-f-date">Date Range</label></div>
+                  <div class="form-check"><input class="form-check-input" type="checkbox" id="rb-f-agent" onchange="rbUpdatePreviewInputs()"><label class="form-check-label" for="rb-f-agent">Agent</label></div>
+                  <div class="form-check"><input class="form-check-input" type="checkbox" id="rb-f-queue" onchange="rbUpdatePreviewInputs()"><label class="form-check-label" for="rb-f-queue">Queue</label></div>
+                  <div class="form-check"><input class="form-check-input" type="checkbox" id="rb-f-reason" onchange="rbUpdatePreviewInputs()"><label class="form-check-label" for="rb-f-reason">Reason</label></div>
+                </div>
+              </div>
+              <div class="rb-sql-wrap">
+                <label class="form-label" for="rb-sql">SQL Query (read-only editor)</label>
+                <textarea class="form-control font-monospace" id="rb-sql" rows="4" readonly placeholder="SELECT ..."></textarea>
+                <div class="mt-2 small text-muted">Insert parameters:
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="rbInsertParam(':from_date')">:from_date</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="rbInsertParam(':to_date')">:to_date</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="rbInsertParam(':agent_ext')">:agent_ext</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="rbInsertParam(':queue_name')">:queue_name</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="rbInsertParam(':reason')">:reason</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-2" onclick="rbToggleSqlEdit()">Edit SQL</button>
+                </div>
+                <div class="form-text">Only SELECT queries. Use named params above; they are safely bound.</div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 mt-auto pt-1">
+                <button class="btn btn-outline-primary" onclick="rbPreview()">Test / Preview Query</button>
+                <button class="btn btn-primary" onclick="rbSave()">Save Report</button>
+                <button class="btn btn-outline-secondary" onclick="rbResetForm()">Clear</button>
+              </div>
+              <div class="mt-1 small" id="rb-msg"></div>
+            </div>
+          </div>
+        </div>
+        <div style="min-width:0;height:100%;">
+          <div class="card rb-card-fill" style="width:100%;box-sizing:border-box;height:100%;display:flex;flex-direction:column;position:relative;">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <span>Live Preview</span>
+              <div class="d-flex flex-wrap align-items-center gap-1" id="rb-preview-filters">
+                <input type="date" class="form-control form-control-sm" id="rb-p-from" style="width:140px" title="From">
+                <input type="date" class="form-control form-control-sm" id="rb-p-to" style="width:140px" title="To">
+                <select class="form-select form-select-sm" id="rb-p-agent" style="width:150px;display:none"><option value="">All agents</option></select>
+                <select class="form-select form-select-sm" id="rb-p-queue" style="width:140px;display:none"><option value="">All queues</option></select>
+                <select class="form-select form-select-sm" id="rb-p-reason" style="width:130px;display:none"><option value="">All reasons</option></select>
+              </div>
+            </div>
+            <div class="card-body p-0" style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;position:relative;">
+              <div class="report-scroll" style="flex:1 1 0;min-height:0;overflow:auto;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead id="rb-preview-head" class="table-light"></thead>
+                  <tbody id="rb-preview-body"><tr><td class="text-center text-muted py-4">Run preview to see results</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="rb-h-splitter" title="Drag to resize, double-click to reset"><div class="rb-grip"></div></div>
+    <div id="rb-bottom-pane">
+      <div class="card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span>Saved Custom Reports</span>
+          <div class="d-flex align-items-center gap-2">
+            <input type="search" class="form-control form-control-sm" id="rb-saved-search" placeholder="Search saved reports..." style="width:240px" oninput="rbOnSavedSearch()">
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadCustomReportsAdmin()">Refresh</button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="rb-saved-scroll">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light"><tr><th>Title</th><th>Category</th><th>Filters</th><th>Active</th><th class="text-end">Actions</th></tr></thead>
+              <tbody id="rb-saved-body"><tr><td colspan="5" class="text-center text-muted py-4">no custom report</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2" style="flex:0 0 auto;">
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0" for="rb-saved-page-size">Entries</label>
+            <select id="rb-saved-page-size" class="form-select form-select-sm" style="width:auto" onchange="rbOnSavedPageSizeChange()"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select>
+          </div>
+          <span class="text-muted small" id="rb-saved-page-info">Showing 0 of 0 entries</span>
+          <div class="btn-group"><button class="btn btn-sm btn-outline-secondary" id="rb-saved-prev" onclick="rbMoveSavedPage(-1)">Previous</button><button class="btn btn-sm btn-outline-secondary" id="rb-saved-next" onclick="rbMoveSavedPage(1)">Next</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRM workspace -->
+  <div class="view" id="view-crm">
+    <div class="crm-layout">
+      <div class="card crm-left-card">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+          <strong>Customer Directory</strong>
+          <button class="btn btn-sm btn-primary" id="crm-new-btn">+ New</button>
+        </div>
+        <div class="card-body pb-2" style="flex:0 0 auto;">
+          <div class="d-flex flex-wrap gap-2 mb-2 align-items-center">
+            <button class="crm-filter-pill active" id="crm-owner-all" type="button">All Customers</button>
+            <button class="crm-filter-pill agent-only" id="crm-owner-mine" type="button">My Customers</button>
+            <select class="form-select form-select-sm" id="crm-category-filter" style="width:auto;min-width:150px"><option value="">All Categories</option></select>
+          </div>
+          <input type="search" class="form-control" id="crm-search" placeholder="Search by name, phone, company...">
+        </div>
+        <div class="list-group list-group-flush crm-list" id="crm-customer-list"></div>
+        <div class="card-footer d-flex justify-content-between align-items-center gap-2" style="flex:0 0 auto;">
+          <span class="small text-muted" id="crm-page-info">0 customers</span>
+          <div class="btn-group"><button class="btn btn-sm btn-outline-secondary" id="crm-prev">Previous</button><button class="btn btn-sm btn-outline-secondary" id="crm-next">Next</button></div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-column crm-right-col">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <strong id="crm-profile-title">New Customer Profile</strong>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <ul class="nav nav-tabs crm-subtabs border-0">
+                <li class="nav-item"><button class="nav-link active" type="button" id="crm-subtab-profile" onclick="setCrmSubtab('profile')">Profile &amp; Timeline</button></li>
+                <li class="nav-item"><button class="nav-link" type="button" id="crm-subtab-tickets" onclick="setCrmSubtab('tickets')">Tickets</button></li>
+              </ul>
+              <button class="btn btn-sm btn-outline-secondary admin-only" id="crm-simulate-btn">Simulate Call Pop</button>
+              <button class="btn btn-sm btn-primary" id="crm-save-customer-btn">Save Profile</button>
+            </div>
+          </div>
+          <div class="card-body crm-form-compact" id="crm-profile-pane">
+            <input type="hidden" id="crm-customer-id">
+            <div class="row g-2">
+              <div class="col-md-6"><label class="form-label">Full name</label><input class="form-control" id="crm-full-name"></div>
+              <div class="col-md-6"><label class="form-label">Primary phone</label>
+                <div class="d-flex align-items-center gap-2">
+                  <input class="form-control" id="crm-primary-phone">
+                  <button type="button" class="crm-call-btn" id="crm-call-primary" title="Click to dial">📞</button>
+                  <button type="button" class="crm-copy-btn" id="crm-copy-phone" title="Copy phone" aria-label="Copy phone">⧉</button>
+                  <span id="crm-copy-status">Copied!</span>
+                </div>
+              </div>
+              <div class="col-md-6"><label class="form-label">Secondary phone</label>
+                <div class="d-flex align-items-center gap-2">
+                  <input class="form-control" id="crm-secondary-phone">
+                  <button type="button" class="crm-call-btn" id="crm-call-secondary" title="Click to dial">📞</button>
+                </div>
+              </div>
+              <div class="col-md-6"><label class="form-label">Company</label><input class="form-control" id="crm-company"></div>
+              <div class="col-md-4"><label class="form-label">Email</label><input class="form-control" id="crm-email"></div>
+              <div class="col-md-4"><label class="form-label">Category</label><select class="form-select" id="crm-category"><option value="NORMAL">Normal</option><option value="VIP">VIP</option><option value="LEAD">Lead</option><option value="PROSPECT">Prospect</option><option value="ACTIVE_CLIENT">Active Client</option><option value="BLACKLIST">Blacklist</option></select></div>
+              <div class="col-md-4"><label class="form-label">Assigned Agent</label><select class="form-select" id="crm-assigned-agent"><option value="">Unassigned</option></select></div>
+              <div class="col-12"><label class="form-label">Address</label><input type="text" class="form-control" id="crm-address"></div>
+            </div>
+            <div class="small text-muted mt-1" id="crm-profile-msg"></div>
+          </div>
+          <div class="card-body crm-form-compact d-none" id="crm-customer-tickets-pane">
+            <div class="mb-3 border rounded p-2">
+              <div class="fw-semibold mb-2">+ New Ticket</div>
+              <div class="row g-2">
+                <div class="col-md-6"><input class="form-control" id="crm-new-ticket-subject" placeholder="Subject"></div>
+                <div class="col-md-3"><select class="form-select" id="crm-new-ticket-category"><option>General</option><option>Complaint</option><option>Technical Support</option><option>Sales / Quote</option><option>Billing</option></select></div>
+                <div class="col-md-3"><select class="form-select" id="crm-new-ticket-priority"><option>Low</option><option selected>Medium</option><option>High</option><option>Urgent</option></select></div>
+                <div class="col-md-4"><select class="form-select" id="crm-new-ticket-assignee"><option value="">Assign to...</option></select></div>
+                <div class="col-md-4"><input type="datetime-local" class="form-control" id="crm-new-ticket-due"></div>
+                <div class="col-md-4 d-grid"><button class="btn btn-primary" id="crm-create-ticket-btn" type="button">Create Ticket</button></div>
+                <div class="col-12"><textarea class="form-control" id="crm-new-ticket-desc" rows="2" placeholder="Description"></textarea></div>
+              </div>
+              <div class="small text-muted mt-1" id="crm-ticket-msg"></div>
+            </div>
+            <div class="fw-semibold mb-2">Open / Recent Tickets</div>
+            <div id="crm-customer-tickets-list" class="table-responsive" style="max-height:320px;overflow:auto"></div>
+          </div>
+        </div>
+
+        <div id="crm-profile-bottom">
+          <div class="card mb-2">
+            <div class="card-header py-2"><strong>Log Call / Interaction</strong></div>
+            <div class="card-body crm-form-compact">
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label">Direction</label><select class="form-select" id="crm-log-direction"><option value="inbound">inbound</option><option value="outbound">outbound</option><option value="manual">manual</option></select></div>
+                <div class="col-md-4"><label class="form-label">Disposition</label><select class="form-select" id="crm-log-disposition"><option value="">(none)</option></select></div>
+                <div class="col-md-5"><label class="form-label">Follow-up</label><input type="datetime-local" class="form-control" id="crm-log-followup"></div>
+                <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" id="crm-log-notes" rows="2"></textarea></div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <div class="small text-muted">CDR/UID: <span id="crm-log-uid" class="mono">—</span> · Agent: <span id="crm-log-agent" class="mono">—</span></div>
+                <button class="btn btn-sm btn-success" id="crm-save-interaction-btn">Save Interaction</button>
+              </div>
+              <div class="small text-muted mt-1" id="crm-log-msg"></div>
+            </div>
+          </div>
+          <div class="card crm-timeline-card">
+            <div class="card-header py-2"><strong>Interaction Timeline</strong></div>
+            <div class="card-body p-0">
+              <div class="crm-timeline list-group list-group-flush" id="crm-timeline"><div class="list-group-item text-muted">Select a customer to view interactions.</div></div>
+            </div>
+          </div>
+        </div>
+        <div id="crm-tickets-bottom" class="d-none">
+          <div class="card crm-timeline-card">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center"><strong>Ticket Details &amp; Audit</strong><span class="small text-muted" id="crm-ticket-detail-meta"></span></div>
+            <div class="card-body p-0"><div class="crm-timeline list-group list-group-flush" id="crm-ticket-detail"><div class="list-group-item text-muted">Select a ticket to view audit history.</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- CRM sales / orders placeholder -->
+  <div class="view" id="view-crm-sales">
+    <div class="card"><div class="card-header"><strong>Sales / Orders</strong></div><div class="card-body text-muted">Phase 3 placeholder — ready for Restaurant Orders / Furniture Quotations.</div></div>
+  </div>
+
+  <!-- CRM reports (filtered) -->
+  <div class="view" id="view-crm-reports">
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><strong>CRM Reports</strong><span class="small text-muted">Filtered to CRM/custom reports</span></div>
+      <div class="card-body">
+        <p class="text-muted mb-2">Use Report Builder / Reports for now. CRM-specific reports can be surfaced here.</p>
+        <button class="btn btn-sm btn-outline-primary" onclick="showView('report-builder')">Open Report Builder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRM tickets queue -->
+  <div class="view" id="view-crm-tickets">
+    <div class="card">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <strong>Tickets Queue</strong>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <select class="form-select form-select-sm" id="crm-q-owner" style="width:auto"><option value="mine">My tickets</option><option value="all">All tickets</option><option value="unassigned">Unassigned</option></select>
+          <select class="form-select form-select-sm" id="crm-q-status" style="width:auto"><option value="openish">Open/Active</option><option value="all">All statuses</option><option>Open</option><option>In Progress</option><option>Waiting Customer</option><option>Escalated</option><option>Closed</option></select>
+          <input type="search" class="form-control form-control-sm" id="crm-q-search" placeholder="Search ticket/customer/phone" style="width:240px">
+          <button class="btn btn-sm btn-outline-secondary" id="crm-q-refresh" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:calc(100vh - 220px);overflow:auto">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Ticket</th><th>Customer</th><th>Subject</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th><th>Actions</th></tr></thead>
+            <tbody id="crm-q-rows"><tr><td colspan="8" class="text-center text-muted py-4">No tickets</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- modals -->
+<div class="modal fade" id="crm-transfer-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Transfer Ticket</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="crm-transfer-ticket-id">
+    <div class="mb-2"><label class="form-label">Transfer To Agent</label><select class="form-select" id="crm-transfer-agent"></select></div>
+    <div class="mb-2"><label class="form-label">Transfer Note</label><textarea class="form-control" id="crm-transfer-note" rows="3"></textarea></div>
+    <div class="small text-muted" id="crm-transfer-msg"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" id="crm-transfer-confirm" type="button">Confirm Transfer</button></div>
+</div></div></div>
+
+<div class="modal fade" id="agent-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="agent-modal-title">Create Agent</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-3"><label class="form-label" for="agent-username">User name</label><input type="text" class="form-control" id="agent-username"></div>
+    <div class="mb-3"><label class="form-label" for="agent-password">Password</label><input type="password" class="form-control" id="agent-password" placeholder="the password of the agent"></div>
+    <div class="mb-3"><label class="form-label" for="agent-issabel-username">Issabel username (SSO link)</label><input type="text" class="form-control" id="agent-issabel-username" placeholder="Issabel login user to map"></div>
+    <div class="mb-3"><label class="form-label" for="agent-extension">SIP extension</label><select class="form-select" id="agent-extension"></select></div>
+    <div class="mb-3"><label class="form-label">Queues</label><select class="form-select" id="agent-queues" multiple size="4"></select><div class="form-text">ctrl or shift to pick more than one</div></div>
+    <div class="form-text" id="agent-modal-hint"></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="agent-save">Save</button></div>
+</div></div></div>
+
+<div class="modal fade" id="reason-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="reason-modal-title">Create Pause Reason</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-3"><label class="form-label" for="reason-code">Reason code</label><input type="text" class="form-control" id="reason-code" placeholder="for example Break"><div class="form-text">the code is one word, the agents see it in their panel</div></div>
+    <div class="mb-3"><label class="form-label" for="reason-description">Description</label><input type="text" class="form-control" id="reason-description"></div>
+    <div class="form-check"><input type="checkbox" class="form-check-input" id="reason-active" checked><label class="form-check-label" for="reason-active">Active (the agents may take it)</label></div>
+    <div class="form-text" id="reason-modal-hint"></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="reason-save">Save</button></div>
+</div></div></div>
+
+<script src="vendor/bootstrap.bundle.min.js"></script>
+<script>
+'use strict';
+window.addEventListener('error', function(e){ try{ var m='js error: '+(e && (e.message||(e.error&&e.error.message)||String(e.error||e))); var el=document.getElementById('status-line'); if(el){ el.textContent=m; el.className='navbar-text text-danger'; } }catch(_){} });
+window.addEventListener('unhandledrejection', function(e){ try{ var r=e&&e.reason; var m='promise error: '+(r&&(r.message||r)||String(r)); var el=document.getElementById('status-line'); if(el){ el.textContent=m; el.className='navbar-text text-danger'; } }catch(_){} });
+
+const TOKEN_KEY = 'cc_admin_token';
+const AGENT_TOKEN_KEY = 'cc_agent_token';
+const AGENT_INFO_KEY = 'cc_agent_info';
+const agents = new Map();
+let monitorQueues = [];
+let monitorKpis = {};
+let socket = null;
+let retry = 1000;
+let authToken = '';
+let authMode = ''; // 'admin' | 'agent' | ''
+let currentAgent = null; // {id, username, extension}
+let issabelSso = '';
+let issabelUser = '';
+let deepLinkedCrm = false;
+let editing = null;
+let adminAgents = [];
+let knownExtensions = [];
+let configuredQueues = [];
+let reasons = [];
+let editingReason = null;
+let aPage = 1;
+let qPage = 1;
+const REPORT_PER_PAGE = 50;
+
+function el(id) { return document.getElementById(id); }
+function decodeTokenPayload(tok) {
+  try {
+    if (!tok || tok.indexOf('.') < 1) return null;
+    const body = tok.split('.')[0];
+    const b64 = body.replace(/-/g,'+').replace(/_/g,'/');
+    const pad = b64 + '==='.slice((b64.length + 3) % 4);
+    return JSON.parse(atob(pad));
+  } catch (e) { return null; }
+}
+function detectAuthFromToken(tok) {
+  const p = decodeTokenPayload(tok);
+  if (p && (p.agent_id || p.extension)) {
+    return { mode: 'agent', agent: { id: p.agent_id || null, username: p.username || '', extension: p.extension || p.sip_extension || '' } };
+  }
+  return tok ? { mode: 'admin', agent: null } : { mode: '', agent: null };
+}
+function token() { return authToken || (authMode === 'agent' ? localStorage.getItem(AGENT_TOKEN_KEY) : localStorage.getItem(TOKEN_KEY)) || localStorage.getItem(AGENT_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || new URLSearchParams(location.search).get('token') || ''; }
+function basePath() { return location.pathname.replace(/[^/]*$/, ''); }
+function apiUrl(path) { return basePath() + path; }
+function wsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  let u = proto + '//' + location.host + basePath() + 'ws?';
+  if (issabelSso) {
+    u += 'issabel_sso=' + encodeURIComponent(issabelSso);
+    if (authMode === 'agent') u += '&client=workspace';
+    return u;
+  }
+  u += 'token=' + encodeURIComponent(token());
+  if (authMode === 'agent') u += '&client=workspace';
+  return u;
+}
+function adminAuthToken() { return issabelSso || token() || ''; }
+function adminUrl(path) {
+  let u = apiUrl(path);
+  const t = adminAuthToken();
+  if (!t) return u;
+  if (issabelSso) {
+    const sep = u.indexOf('?') === -1 ? '?' : '&';
+    u += sep + 'issabel_sso=' + encodeURIComponent(issabelSso);
+  }
+  return u;
+}
+function adminHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  const t = adminAuthToken();
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+async function apiJson(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers || {});
+  if (!(opts.body instanceof FormData) && opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  if (!issabelSso && token()) headers['Authorization'] = 'Bearer ' + token();
+  let url = apiUrl(path);
+  if (issabelSso) {
+    const sep = url.indexOf('?') === -1 ? '?' : '&';
+    url += sep + 'issabel_sso=' + encodeURIComponent(issabelSso);
+  }
+  const r = await fetch(url, Object.assign({}, opts, { headers }));
+  const txt = await r.text();
+  let data = null; try { data = txt ? JSON.parse(txt) : null; } catch(e) { data = txt; }
+  if (!r.ok) { const err = new Error((data && data.error) || ('HTTP ' + r.status)); err.status = r.status; err.data = data; throw err; }
+  return data;
+}
+function escapeHtml(value) { return String(value === undefined || value === null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function normalizeViewName(name) {
+  if (name === 'crm-customers') return 'crm';
+  if (name === 'crm-tickets') return 'crm-tickets';
+  if (name === 'crm-sales') return 'crm-sales';
+  if (name === 'crm-reports') return 'crm-reports';
+  return name || 'monitor';
+}
+function applyCrmDeepLinkLayout() {
+  const h = (location.hash||'').replace(/^#/,'').split(/[?&]/)[0];
+  const deep = (h === 'crm-customers' || h === 'crm-tickets' || h === 'crm-sales' || h === 'crm-reports');
+  deepLinkedCrm = deep;
+  const subtabs = document.querySelectorAll('.crm-subtabs');
+  subtabs.forEach(st => st.style.display = (deep && (h === 'crm-customers' || h === 'crm-tickets')) ? 'none' : '');
+  if (h === 'crm-customers') setCrmSubtab('profile');
+  if (h === 'crm-tickets') setCrmSubtab('tickets');
+}
+function showView(name) {
+    const raw = name;
+    name = normalizeViewName(name);
+    if (authMode === 'agent' && ['monitor','reports','report-builder','agents','pauses'].indexOf(name) !== -1) name = 'crm';
+    const targetHash = '#' + (raw || name);
+    if (location.hash !== targetHash) { location.hash = targetHash; return; }
+    for (const view of document.querySelectorAll('.view')) {
+      const on = view.id === 'view-' + name;
+      view.classList.toggle('active', on);
+      view.style.display = on ? (view.id === 'view-report-builder' ? 'flex' : 'block') : 'none';
+    }
+    document.querySelectorAll('.crm-nav .nav-link').forEach(a => a.classList.toggle('active', a.getAttribute('data-view') === name || a.getAttribute('data-view') === raw));
+    if (name === 'agents' && authMode !== 'agent') loadAgents();
+    if (name === 'pauses' && authMode !== 'agent') loadReasons();
+    if (name === 'reports' && authMode !== 'agent') { initReportsUI(); loadReportFilters(); loadReports(true); }
+    if (name === 'report-builder' && authMode !== 'agent') { initReportBuilderView(); loadCustomReportsList(); }
+    if (name === 'crm') { initCrmView(); applyCrmDeepLinkLayout(); }
+    if (name === 'crm-tickets') { initCrmTicketsQueueView(); applyCrmDeepLinkLayout(); }
+    if (name === 'crm-sales' || name === 'crm-reports') { applyCrmDeepLinkLayout(); }
+}
+
+// ----- monitor -----
+function fmtHMS(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function todayStr() {
+    const d = new Date();
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), da = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + da;
+}
+function fmtDuration(seconds) {
+    seconds = Math.max(0, Math.round(Number(seconds) || 0));
+    const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), sec = seconds % 60;
+    return (h ? h + 'h ' : '') + (h || m ? String(m).padStart(2, '0') + 'm ' : '') + String(sec).padStart(2, '0') + 's';
+}
+function eventBadge(type) {
+    const colors = { login:'text-bg-success', logout:'text-bg-secondary', pause:'text-bg-warning', unpause:'text-bg-info' };
+    return '<span class="badge ' + (colors[type] || 'text-bg-secondary') + ' badge-status">' + escapeHtml(type || '') + '</span>';
+}
+function agentTime(a) {
+    if (!a || !a.since) return '--:--:--';
+    const s = Math.floor(Date.now()/1000) - Math.max(0, a.since);
+    if (isNaN(s)) return '--:--:--';
+    return fmtHMS(s);
+}
+function displayStatus(a) {
+    if (a.display_status) return a.display_status;
+    if (a.call_state === 'ringing') return 'RINGING';
+    if (a.call_state === 'in-call') return 'TALKING';
+    if (a.status === 'pause') return 'PAUSE';
+    return (a.status === 'available' ? 'READY' : 'OFFLINE');
+}
+function statusBadge(a) {
+    const st = displayStatus(a);
+    const t = agentTime(a);
+    if (st === 'READY') return '<span class="badge badge-ready">READY</span>';
+    if (st === 'TASK') return '<span class="badge badge-task">TASK ' + t + '</span>';
+    if (st === 'PAUSE') {
+        const reason = (a.reason && String(a.reason).trim()) ? String(a.reason).trim() : 'Pause';
+        return '<span class="badge badge-pause">' + escapeHtml(reason) + ' (' + t + ')</span>';
+    }
+    if (st === 'TALKING' || st === 'RINGING') {
+        const caller = a.caller_id || a.talking_caller || a.call || '';
+        const cls = st === 'RINGING' ? 'badge-task' : 'badge-talking';
+        const label = st === 'RINGING' ? 'RINGING' : 'TALKING';
+        return '<span class="badge ' + cls + '">' + label + (caller ? ' (' + escapeHtml(caller) + ')' : '') + '</span>';
+    }
+    return '<span class="badge text-bg-secondary">OFFLINE</span>';
+}
+function gaugeHtml(pct, th) {
+    const size = 72, r = 28, stroke = 7, c = 2 * Math.PI * r, cx = size / 2, cy = size / 2;
+    if (pct === null || pct === undefined || pct === '') {
+        return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" stroke="#e9ecef" stroke-width="'+stroke+'" fill="none"></circle></svg><div class="center"><div class="pct">—</div><div class="sub">' + th + '</div></div>';
+    }
+    const p = Math.max(0, Math.min(100, Number(pct)));
+    const off = c * (1 - p / 100);
+    const color = p>=90?'#2ecc71':p>=80?'#27ae60':p>=70?'#f39c12':'#e74c3c';
+    return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" stroke="#e9ecef" stroke-width="'+stroke+'" fill="none"></circle><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" stroke="'+color+'" stroke-width="'+stroke+'" fill="none" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"></circle></svg><div class="center"><div class="pct">'+p+'%</div><div class="sub">'+th+'</div></div>';
+}
+let waitingPopover = null;
+function waitingCallsHtml() {
+    const rows = [];
+    for (const q of (monitorQueues || [])) {
+        for (const c of (q.entries || [])) {
+            const joinedAt = c.joinedAt || c.joined_at || (Date.now() - (c.wait || 0) * 1000);
+            const waitSec = Math.max(0, Math.floor((Date.now() - joinedAt) / 1000));
+            rows.push({ queue: q.queue, caller: c.caller || '-', wait: waitSec });
+        }
+    }
+    if (!rows.length) return '<div class="waiting-pop text-muted">No waiting calls</div>';
+    let html = '<div class="waiting-pop"><table class="table table-sm table-borderless mb-0"><thead><tr><th>Caller</th><th>Queue</th><th>Waiting</th></tr></thead><tbody>';
+    for (const r of rows) {
+        html += '<tr><td class="mono">' + escapeHtml(r.caller) + '</td><td>' + escapeHtml(r.queue) + '</td><td class="mono">' + fmtHMS(r.wait) + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    return html;
+}
+function updateWaitingPopover() {
+    const card = el('waiting-card');
+    if (!card || !window.bootstrap) return;
+    if (!waitingPopover) {
+        waitingPopover = new bootstrap.Popover(card, {
+            trigger: 'hover focus', html: true, placement: 'bottom', container: 'body',
+            sanitize: false, content: waitingCallsHtml(), customClass: 'waiting-popover'
+        });
+    }
+    waitingPopover._config.content = waitingCallsHtml();
+    const tip = waitingPopover.tip || (typeof waitingPopover.getTipElement === 'function' ? waitingPopover.getTipElement() : null);
+    if (tip && tip.classList && tip.classList.contains('show')) {
+        const body = tip.querySelector('.popover-body');
+        if (body) body.innerHTML = waitingPopover._config.content;
+    }
+}
+
+let agentQueuesTip = null;
+function assignedQueuesHtml(data) {
+    let list = [];
+    try { list = JSON.parse(decodeURIComponent(data || '[]')); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = String(list || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!list.length) return '<div class="waiting-pop text-muted">No assigned queues</div>';
+    let html = '<div class="waiting-pop"><div class="fw-semibold mb-1">Assigned Queues</div><ul class="mb-0 ps-3">';
+    for (const q of list) html += '<li>' + escapeHtml(String(q)) + '</li>';
+    html += '</ul></div>';
+    return html;
+}
+function abuseHtml(data) {
+    let o = {t:0,d:0,n:0,r:[]};
+    try { o = JSON.parse(decodeURIComponent(data || '{}')) || o; } catch (e) {}
+    if (!o.n && !(o.r||[]).length) return '<div class="waiting-pop text-muted">No abuse records today</div>';
+    let html = '<div class="waiting-pop"><div class="fw-semibold mb-1">Timeout: ' + (o.t||0) + ' | Declined: ' + (o.d||0) + '</div>';
+    const rec = (o.r || []).slice(0,5);
+    if (!rec.length) { html += '<div class="text-muted">No recent records</div>'; }
+    else {
+        html += '<ul class="mb-0 ps-3">';
+        for (const r of rec) {
+            const sec = Math.round((r.ringMs||0)/1000);
+            const ts = r.time ? new Date(r.time).toLocaleTimeString() : '';
+            html += '<li><strong>' + escapeHtml(r.reason||'') + '</strong> (' + sec + 's) — Caller ' + escapeHtml(r.callerId||'-') + ' [Q: ' + escapeHtml(r.queue||'-') + ']' + (ts ? ' at ' + escapeHtml(ts) : '') + '</li>';
+        }
+        html += '</ul>';
+    }
+    html += '</div>';
+    return html;
+}
+function showAgentQueuesTip(target) {
+    if (!agentQueuesTip) {
+        agentQueuesTip = document.createElement('div');
+        agentQueuesTip.className = 'popover bs-popover-auto fade show waiting-popover';
+        agentQueuesTip.style.position = 'fixed';
+        agentQueuesTip.style.zIndex = '99999';
+        agentQueuesTip.style.maxWidth = '320px';
+        agentQueuesTip.style.pointerEvents = 'none';
+        agentQueuesTip.innerHTML = '<div class="popover-arrow" style="display:none"></div><div class="popover-body"></div>';
+        document.body.appendChild(agentQueuesTip);
+    }
+    const isAbuse = target.classList && target.classList.contains('abuse-info-badge');
+    agentQueuesTip._type = isAbuse ? 'abuse' : 'queue';
+    agentQueuesTip.querySelector('.popover-body').innerHTML = isAbuse ? abuseHtml(target.getAttribute('data-abuse')) : assignedQueuesHtml(target.getAttribute('data-queues'));
+    const r = target.getBoundingClientRect();
+    const tipH = isAbuse ? 160 : 120;
+    const top = (r.top - tipH < 8) ? (r.bottom + 6) : (r.top - tipH - 6);
+    const w = isAbuse ? 330 : 270;
+    agentQueuesTip.style.maxWidth = w + 'px';
+    agentQueuesTip.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w)) + 'px';
+    agentQueuesTip.style.top = Math.max(8, top) + 'px';
+    agentQueuesTip.style.display = 'block';
+}
+function hideAgentQueuesTip() {
+    if (agentQueuesTip) agentQueuesTip.style.display = 'none';
+}
+function initAgentQueuePopovers() {
+    if (document._aqInit) return;
+    document._aqInit = true;
+    document.addEventListener('mouseover', function(e) {
+        const t = e.target.closest('.queue-info-badge');
+        if (t) { if (agentQueuesTip && agentQueuesTip._type === 'abuse') hideAgentQueuesTip(); showAgentQueuesTip(t); return; }
+        const a = e.target.closest('.abuse-info-badge');
+        if (a) { if (agentQueuesTip && agentQueuesTip._type === 'queue') hideAgentQueuesTip(); showAgentQueuesTip(a); }
+    });
+    document.addEventListener('mousemove', function(e) {
+        const t = e.target.closest('.queue-info-badge') || e.target.closest('.abuse-info-badge');
+        if (t && agentQueuesTip && agentQueuesTip.style.display === 'block') showAgentQueuesTip(t);
+    });
+    document.addEventListener('mouseout', function(e) {
+        const fromQ = e.target.closest('.queue-info-badge');
+        const toQ = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.queue-info-badge') : null;
+        const fromA = e.target.closest('.abuse-info-badge');
+        const toA = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.abuse-info-badge') : null;
+        if ((fromQ && fromQ !== toQ) || (fromA && fromA !== toA)) {
+            if (!(e.relatedTarget && e.relatedTarget.closest && (e.relatedTarget.closest('.queue-info-badge') || e.relatedTarget.closest('.abuse-info-badge')))) hideAgentQueuesTip();
+        }
+    });
+}
+function renderKpis() {
+    const list = Array.from(agents.values()).filter(a => a.connected);
+    const logged = list.length;
+    const paused = list.filter(a => a.status === 'pause').length;
+    const k = monitorKpis || {};
+    const val = (v, suffix) => (v === null || v === undefined) ? '—' : (v + (suffix||''));
+    el('m-waiting').textContent = k.waiting_qc != null ? k.waiting_qc : 0;
+    el('m-active').textContent = k.active_qc != null ? k.active_qc : 0;
+    el('m-completed').textContent = val(k.completed_qc);
+    el('m-abandoned').textContent = val(k.abandoned_qc);
+    el('m-total').textContent = val(k.total_qc);
+    el('m-logged').textContent = k.agents_logged != null ? k.agents_logged : logged;
+    el('m-paused').textContent = k.agents_paused != null ? k.agents_paused : paused;
+    el('m-qsa').textContent = k.avg_qsa_s != null ? k.avg_qsa_s + ' s' : '—';
+    el('m-qtt').textContent = k.avg_qtt_s != null ? k.avg_qtt_s + ' s' : '—';
+    const sla = k.sla || {};
+    el('g-s10').innerHTML = gaugeHtml(sla.s10, '10s');
+    el('g-s20').innerHTML = gaugeHtml(sla.s20, '20s');
+    el('g-s30').innerHTML = gaugeHtml(sla.s30, '30s');
+    el('g-s30p').innerHTML = gaugeHtml(sla.s30p, '30+s');
+    const on = el('kpi-online'); if (on) on.textContent = logged;
+    updateWaitingPopover();
+}
+function renderMonitorAgents() {
+    const q = (el('a-search').value || '').toLowerCase();
+    const st = el('a-status').value;
+    const lim = parseInt(el('a-entries').value, 10) || 10;
+    let rows = Array.from(agents.values()).filter(a => a.connected);
+    if (st) rows = rows.filter(a => displayStatus(a) === st);
+    if (q) rows = rows.filter(a => (a.username || '').toLowerCase().includes(q));
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / lim));
+    if (aPage > pages) aPage = pages;
+    if (aPage < 1) aPage = 1;
+    const start = (aPage - 1) * lim;
+    const pageRows = rows.slice(start, start + lim);
+    if (!pageRows.length) {
+        el('m-agent-rows').innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">no agent</td></tr>';
+    } else {
+        el('m-agent-rows').innerHTML = pageRows.map(a => {
+            const isActive = (a.call_state === 'ringing' || a.call_state === 'in-call' || displayStatus(a) === 'RINGING' || displayStatus(a) === 'TALKING');
+            const queueCell = (isActive && a.active_queue) ? a.active_queue : '—';
+            const taken = a.calls_taken != null ? a.calls_taken : 0;
+            const made = a.calls_made != null ? a.calls_made : 0;
+            const qn = a.queue_count != null ? a.queue_count : (a.queues ? a.queues.length : 0);
+            const pn = a.pause_count != null ? a.pause_count : 0;
+            const qList = encodeURIComponent(JSON.stringify(a.queues || []));
+            return '<tr>'
+              + '<td><strong>' + escapeHtml(a.username) + '</strong></td>'
+              + '<td>' + statusBadge(a) + '</td>'
+              + '<td>' + escapeHtml(queueCell) + '</td>'
+              + '<td class="mono">' + agentTime(a) + '</td>'
+              + '<td><span class="pill pill-blue">#Taken: ' + taken + '</span><span class="pill pill-red">#Made: ' + made + '</span><span class="pill abuse-info-badge" data-abuse="' + encodeURIComponent(JSON.stringify({t:a.abuse_timeout||0,d:a.abuse_declined||0,n:a.abuse_total||0,r:a.abuse_recent||[]})) + '" style="background:#d97706;color:#fff;cursor:pointer">#Abuse: ' + (a.abuse_total||0) + '</span></td>'
+              + '<td><span class="pill pill-blue queue-info-badge" data-queues="' + qList + '" style="cursor:pointer">#Queue: ' + qn + '</span><span class="pill pill-red">#Pause: ' + pn + '</span></td>'
+              + '<td><button class="btn btn-sm btn-outline-secondary" onclick="openAgentMenu(event,\'' + escapeHtml(a.extension) + '\')">Action ▾</button></td></tr>';
+        }).join('');
+    }
+    const from = total ? start + 1 : 0, to = Math.min(start + lim, total);
+    el('a-count').textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' entries · page ' + aPage + ' of ' + pages;
+}
+function moveMonitorAgents(direction) { aPage += direction; renderMonitorAgents(); }
+
+function renderMonitorQueues() {
+    const q = (el('q-search').value || '').toLowerCase();
+    const lim = parseInt(el('q-entries').value, 10) || 10;
+    let rows = (monitorQueues || []).filter(x => !q || String(x.queue||'').toLowerCase().includes(q));
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / lim));
+    if (qPage > pages) qPage = pages;
+    if (qPage < 1) qPage = 1;
+    const start = (qPage - 1) * lim;
+    const pageRows = rows.slice(start, start + lim);
+    if (!pageRows.length) {
+        el('m-queue-rows').innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">no queue</td></tr>';
+        el('queue-callers').innerHTML = '';
+    } else {
+        el('m-queue-rows').innerHTML = pageRows.map(x => '<tr>'
+          + '<td><strong>' + escapeHtml(x.queue) + '</strong></td>'
+          + '<td class="cell-waiting">' + (x.waiting||0) + '</td>'
+          + '<td>' + (x.in_call||0) + '</td>'
+          + '<td class="cell-completed">' + (x.completed != null ? x.completed : '—') + '</td>'
+          + '<td class="cell-abandoned">' + (x.abandoned != null ? x.abandoned : '—') + '</td>'
+          + '<td>' + (x.transferred != null ? x.transferred : '—') + '</td>'
+          + '<td class="cell-sla">' + escapeHtml(x.sla_text || 'N/A') + '</td></tr>').join('');
+        let callers = [];
+        for (const x of pageRows) {
+            for (const c of (x.entries || [])) callers.push({queue:x.queue, caller:c.caller, wait:c.wait});
+        }
+        if (callers.length) {
+            el('queue-callers').innerHTML = '<div class="small-muted mb-1">Waiting callers</div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Queue</th><th>Caller</th><th>Waiting</th></tr></thead><tbody>'
+              + callers.map(c => '<tr><td>'+escapeHtml(c.queue)+'</td><td class="mono">'+escapeHtml(c.caller||'-')+'</td><td class="mono">'+fmtHMS(c.wait||0)+'</td></tr>').join('') + '</tbody></table></div>';
+        } else { el('queue-callers').innerHTML = ''; }
+    }
+    const from = total ? start + 1 : 0, to = Math.min(start + lim, total);
+    el('q-count').textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' entries · page ' + qPage + ' of ' + pages;
+}
+function moveMonitorQueues(direction) { qPage += direction; renderMonitorQueues(); }
+
+function closeAgentMenu() {
+    const m = el('agent-action-menu'); if (m) m.classList.remove('show');
+}
+function openAgentMenu(ev, extension) {
+    ev.preventDefault(); ev.stopPropagation();
+    const menu = el('agent-action-menu');
+    if (!menu) return;
+    const ext = String(extension || '');
+    const esc = ext.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    menu.innerHTML = ''
+      + '<a class="dropdown-item" href="#" onclick="adminBreak(\'' + esc + '\');closeAgentMenu();return false;">Pause (AdminBreak)</a>'
+      + '<a class="dropdown-item" href="#" onclick="resumeAgent(\'' + esc + '\');closeAgentMenu();return false;">Resume</a>'
+      + '<hr class="dropdown-divider">'
+      + '<a class="dropdown-item text-danger" href="#" onclick="forceLogout(\'' + esc + '\');closeAgentMenu();return false;">Force Logout</a>';
+    menu.classList.add('show');
+    menu.style.visibility = 'hidden';
+    const r = ev.currentTarget.getBoundingClientRect();
+    menu.style.top = (r.bottom + 2) + 'px';
+    menu.style.left = (r.left) + 'px';
+    requestAnimationFrame(function () {
+        const w = menu.offsetWidth || 170;
+        const h = menu.offsetHeight || 120;
+        let left = r.right - w;
+        if (left < 4) left = r.left;
+        if (left + w > window.innerWidth - 4) left = window.innerWidth - w - 4;
+        let top = r.bottom + 2;
+        if (top + h > window.innerHeight - 4) top = r.top - h - 2;
+        if (top < 4) top = 4;
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+        menu.style.visibility = 'visible';
+    });
+}
+document.addEventListener('click', closeAgentMenu);
+window.addEventListener('scroll', function(e){ if(e.target && e.target.closest && e.target.closest('.dropdown-menu')) return; closeAgentMenu(); }, true);
+window.addEventListener('resize', closeAgentMenu);
+function renderMonitor() {
+    renderKpis();
+    renderMonitorAgents();
+    renderMonitorQueues();
+    el('updated').textContent = new Date().toLocaleTimeString();
+}
+function applyState(list, queues, kpis) {
+    const seen = new Set();
+    for (const agent of (list || [])) {
+        seen.add(agent.extension);
+        agents.set(agent.extension, Object.assign({connected:true}, agent));
+    }
+    for (const [extension, agent] of agents) {
+        if (!seen.has(extension)) agent.connected = false;
+    }
+    if (queues !== undefined) monitorQueues = queues || [];
+    if (kpis !== undefined) monitorKpis = kpis || {};
+    renderMonitor();
+}
+function applyKnown(list) {
+    for (const agent of (list || [])) {
+        if (!agents.has(agent.extension)) {
+            agents.set(agent.extension, { username: agent.username, extension: agent.extension, status: 'offline', reason: '', since: 0, connected: false, queues: [] });
+        }
+    }
+    renderMonitor();
+}
+
+function postAdmin(path, body, cb) {
+    const request = new XMLHttpRequest();
+    request.open('POST', apiUrl(path), true);
+    request.setRequestHeader('Content-Type', 'application/json');
+    request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () { cb(request.status, request.responseText); };
+    request.onerror = function () { cb(0, ''); };
+    request.send(JSON.stringify(body || {}));
+}
+function pauseAll() { if (!confirm('Pause all logged-in agents?')) return; postAdmin('api/admin/pause_all', {reason:'AdminBreak'}, function(st){ if(st!==200) setStatus('pause all failed ('+st+')','text-danger'); }); }
+function resumeAll() { if (!confirm('Resume all logged-in agents?')) return; postAdmin('api/admin/resume_all', {}, function(st){ if(st!==200) setStatus('resume all failed ('+st+')','text-danger'); }); }
+function forceLogout(extension) { if (!confirm('Force logout extension ' + extension + '?')) return; postAdmin('api/admin/force_logout', {extension: extension}, function(st){ if(st!==200) setStatus('force logout failed ('+st+')','text-danger'); }); }
+function resumeAgent(extension) { postAdmin('simulate/state', {extension: extension, status: 'available', reason: ''}, function(st){ if(st!==200) setStatus('resume failed ('+st+')','text-danger'); }); }
+
+// ----- agents management (unchanged behavior) -----
+function loadAgents(silent) {
+    const request = new XMLHttpRequest();
+    request.open('GET', adminUrl('api/admin/agents'), true);
+    request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () {
+        if (request.status !== 200) { if (!silent) setStatus('the agents could not be read (' + request.status + ')', 'text-danger'); return; }
+        let data={}; try { data = JSON.parse(request.responseText); } catch(e) { data={}; }
+        knownExtensions = data.extensions || []; configuredQueues = data.configured_queues || []; adminAgents = data.agents || [];
+        try { renderAgents(adminAgents); } catch(e) {}
+        try { fillReportAgents(); } catch(e) {}
+    };
+    request.onerror = function () { if (!silent) setStatus('the agents could not be read', 'text-danger'); };
+    request.send();
+}
+function renderAgents(list) {
+    const rows = [];
+    for (const agent of list) {
+        rows.push('<tr' + (agent.active ? '' : ' class="text-muted"') + '>'
+            + '<td>' + escapeHtml(agent.username) + '</td><td class="mono">' + escapeHtml(agent.sip_extension) + '</td>'
+            + '<td class="mono">' + escapeHtml((agent.queues || []).join(', ')) + '</td>'
+            + '<td>' + (agent.active ? '<span class="badge text-bg-success badge-status">Active</span>' : '<span class="badge text-bg-secondary badge-status">Disabled</span>') + '</td>'
+            + '<td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" onclick="openAgent(' + agent.id + ')">Edit</button>'
+            + (agent.active ? '<button class="btn btn-sm btn-outline-danger" onclick="disableAgent(' + agent.id + ')">Disable</button>' : '<button class="btn btn-sm btn-outline-success" onclick="enableAgent(' + agent.id + ')">Enable</button>')
+            + '</td></tr>');
+    }
+    el('agent-rows').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="6" class="text-center text-muted py-4">no agent</td></tr>';
+}
+function renderExtensions(selected) {
+    const list = knownExtensions.slice(); if (selected && list.indexOf(selected) === -1) list.push(selected);
+    let html = ''; for (const extension of list) html += '<option value="' + escapeHtml(extension) + '"' + (extension === selected ? ' selected' : '') + '>' + escapeHtml(extension) + '</option>';
+    el('agent-extension').innerHTML = html;
+}
+function renderQueues(selected) {
+    let html = ''; for (const queue of configuredQueues.slice()) html += '<option value="' + escapeHtml(queue) + '"' + (selected.indexOf(queue) !== -1 ? ' selected' : '') + '>' + escapeHtml(queue) + '</option>';
+    if (!html) html = '<option value="" disabled selected>no queue yet</option>';
+    el('agent-queues').innerHTML = html;
+}
+function openModal(id) { new bootstrap.Modal(document.getElementById(id || 'agent-modal')).show(); }
+function selectedQueues() { const queues=[]; for (const o of el('agent-queues').options) if (o.selected && o.value) queues.push(o.value); return queues; }
+function selectedExtension() { return el('agent-extension').value; }
+function openAgent(id) {
+    editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; if (el('agent-issabel-username')) el('agent-issabel-username').value = ''; el('agent-modal-hint').textContent = '';
+    renderExtensions(''); renderQueues([]);
+    if (id) {
+        const agent = adminAgents.find(function (a) { return a.id === id; });
+        if (!agent) { setStatus('the agent is not in the list any more', 'text-danger'); return; }
+        editing = agent; el('agent-modal-title').textContent = 'Edit ' + agent.username; el('agent-username').value = agent.username; el('agent-password').value = ''; if (el('agent-issabel-username')) el('agent-issabel-username').value = agent.issabel_username || '';
+        el('agent-modal-hint').textContent = 'the password stays the same when the field is empty';
+        renderExtensions(agent.sip_extension); renderQueues(agent.queues || []);
+        const missing = (agent.queues || []).filter(function (queue) { return configuredQueues.indexOf(queue) === -1; });
+        if (missing.length) el('agent-modal-hint').textContent += ' (the queue ' + missing.join(', ') + ' is not in Issabel, it goes away with the save)';
+    }
+    openModal('agent-modal');
+}
+function saveAgent() {
+    const body = { username: el('agent-username').value.trim(), password: el('agent-password').value, issabel_username: (el('agent-issabel-username') ? el('agent-issabel-username').value.trim() : ''), sip_extension: selectedExtension(), queues: selectedQueues() };
+    if (!body.username || !body.sip_extension || (!body.password && !editing)) { el('agent-modal-hint').textContent = 'the user name, the password and the extension are needed'; return; }
+    const request = new XMLHttpRequest();
+    request.open(editing ? 'PUT' : 'POST', adminUrl('api/admin/agents' + (editing ? '/' + editing.id : '')), true);
+    request.setRequestHeader('Content-Type', 'application/json'); request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () {
+        if (request.status !== 200 && request.status !== 201) {
+            let message = 'the agent could not be saved (' + request.status + ')'; try { message = JSON.parse(request.responseText).error || message; } catch (e) {}
+            el('agent-modal-hint').textContent = message; return;
+        }
+        bootstrap.Modal.getInstance(document.getElementById('agent-modal')).hide(); loadAgents();
+    };
+    request.send(JSON.stringify(body));
+}
+function setAgentActive(id, active) {
+    const request = new XMLHttpRequest(); request.open('PUT', adminUrl('api/admin/agents/' + id), true);
+    request.setRequestHeader('Content-Type', 'application/json'); request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () { if (request.status !== 200) setStatus('the agent could not be changed (' + request.status + ')', 'text-danger'); else loadAgents(); };
+    request.send(JSON.stringify({ is_active: active }));
+}
+function disableAgent(id) { setAgentActive(id, false); }
+function enableAgent(id) { setAgentActive(id, true); }
+
+// ----- pause reasons (unchanged) -----
+function loadReasons() {
+    const request = new XMLHttpRequest(); request.open('GET', adminUrl('api/admin/pause_reasons'), true); request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () { if (request.status !== 200) { setStatus('the pause reasons could not be read (' + request.status + ')', 'text-danger'); return; } reasons = JSON.parse(request.responseText).reasons || []; renderReasons(); };
+    request.onerror = function () { setStatus('the pause reasons could not be read', 'text-danger'); };
+    request.send();
+}
+function renderReasons() {
+    const rows = [];
+    for (const reason of reasons) {
+        rows.push('<tr' + (reason.active ? '' : ' class="text-muted"') + '><td>' + escapeHtml(reason.reason_code) + '</td><td>' + escapeHtml(reason.description) + '</td>'
+          + '<td>' + (reason.active ? '<span class="badge text-bg-success badge-status">Active</span>' : '<span class="badge text-bg-secondary badge-status">Inactive</span>') + '</td>'
+          + '<td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" onclick="openReason(' + reason.id + ')">Edit</button>'
+          + (reason.active ? '<button class="btn btn-sm btn-outline-secondary me-1" onclick="setReasonActive(' + reason.id + ', false)">Disable</button>' : '<button class="btn btn-sm btn-outline-success me-1" onclick="setReasonActive(' + reason.id + ', true)">Enable</button>')
+          + '<button class="btn btn-sm btn-outline-danger" onclick="deleteReason(' + reason.id + ')">Delete</button></td></tr>');
+    }
+    el('reason-rows').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4" class="text-center text-muted py-4">no reason</td></tr>';
+}
+function openReason(id) {
+    editingReason = null; el('reason-modal-title').textContent = 'Create Pause Reason'; el('reason-code').value = ''; el('reason-description').value = ''; el('reason-active').checked = true; el('reason-modal-hint').textContent = '';
+    if (id) {
+        const reason = reasons.find(function (r) { return r.id === id; }); if (!reason) { setStatus('the reason is not in the list any more', 'text-danger'); return; }
+        editingReason = reason; el('reason-modal-title').textContent = 'Edit ' + reason.reason_code; el('reason-code').value = reason.reason_code; el('reason-description').value = reason.description; el('reason-active').checked = reason.active;
+    }
+    openModal('reason-modal');
+}
+function saveReason() {
+    const body = { reason_code: el('reason-code').value.trim(), description: el('reason-description').value.trim(), is_active: el('reason-active').checked };
+    if (!body.reason_code) { el('reason-modal-hint').textContent = 'the reason code is needed'; return; }
+    const request = new XMLHttpRequest(); request.open(editingReason ? 'PUT' : 'POST', adminUrl('api/admin/pause_reasons' + (editingReason ? '/' + editingReason.id : '')), true);
+    request.setRequestHeader('Content-Type', 'application/json'); request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+    request.onload = function () { if (request.status !== 200 && request.status !== 201) { let message='the reason could not be saved ('+request.status+')'; try{message=JSON.parse(request.responseText).error||message;}catch(e){} el('reason-modal-hint').textContent=message; return; } bootstrap.Modal.getInstance(document.getElementById('reason-modal')).hide(); loadReasons(); };
+    request.send(JSON.stringify(body));
+}
+function setReasonActive(id, active) { const request = new XMLHttpRequest(); request.open('PUT', adminUrl('api/admin/pause_reasons/' + id), true); request.setRequestHeader('Content-Type','application/json'); request.setRequestHeader('Authorization','Bearer '+adminAuthToken()); request.onload=function(){ if(request.status!==200) setStatus('the reason could not be changed ('+request.status+')','text-danger'); else loadReasons(); }; request.send(JSON.stringify({is_active:active})); }
+function deleteReason(id) {
+    if (!window.confirm('delete this pause reason?')) return;
+    const request = new XMLHttpRequest(); request.open('DELETE', adminUrl('api/admin/pause_reasons/' + id), true); request.setRequestHeader('Authorization','Bearer '+adminAuthToken());
+    request.onload = function () { if (request.status !== 200) { setStatus('the reason could not be deleted ('+request.status+')','text-danger'); return; } if (JSON.parse(request.responseText).deactivated) setStatus('the reason is in the agent log, it was deactivated instead','text-warning'); loadReasons(); };
+    request.send();
+}
+
+
+// ----- reports -----
+const BUILTIN_REPORT_CATS = {
+  agents: [
+    {id:'agent_log', label:'Agent Log'},
+    {id:'agent_performance', label:'Agent Performance & Abuse'},
+    {id:'requeue_abuse', label:'Requeue & Abuse Log'},
+  ],
+  queues: [
+    {id:'queue_summary_sla', label:'Queue Summary & SLA'},
+    {id:'hourly_traffic', label:'Hourly Traffic'},
+  ],
+  calls: [
+    {id:'queue_calls_detail', label:'Queue Calls Detail'},
+    {id:'outbound_calls', label:'Outbound Calls'},
+  ]
+};
+let REPORT_CATS = { agents: BUILTIN_REPORT_CATS.agents.slice(), queues: BUILTIN_REPORT_CATS.queues.slice(), calls: BUILTIN_REPORT_CATS.calls.slice() };
+let customReportsCache = [];
+let reportCategory = 'agents';
+let reportSub = 'agent_log';
+let reportPage = 1;
+let reportTotal = 0;
+let reportPerPage = 50;
+let reportLast = { head: [], rows: [], rawRows: [], customColumns: [] };
+let reportFiltersLoaded = false;
+
+function isCustomReportId(id) { return String(id||'').indexOf('custom:') === 0; }
+function customReportIdNum(id) { return parseInt(String(id).slice(7), 10); }
+function customReportDef(id) { const n = customReportIdNum(id); return customReportsCache.find(r => r.id === n) || null; }
+
+function reportCfg(id) {
+  if (isCustomReportId(id)) {
+    const def = customReportDef(id) || { filters: ['date'] };
+    const f = Array.isArray(def.filters) ? def.filters : ['date'];
+    return { custom:true, id:id, endpoint:'api/admin/custom-reports/'+customReportIdNum(id)+'/run', paged:false, serverPaged:false, needsAgent:f.indexOf('agent')!==-1, needsQueue:f.indexOf('queue')!==-1, needsReason:f.indexOf('reason')!==-1 };
+  }
+  const map = {
+    agent_log: { endpoint:'api/admin/reports/agent_logs', paged:true, serverPaged:true, needsAgent:true, needsQueue:false, needsReason:false },
+    agent_performance: { endpoint:'api/admin/reports/agent_performance', paged:false, serverPaged:false, needsAgent:true, needsQueue:false, needsReason:false },
+    requeue_abuse: { endpoint:'api/admin/reports/requeue_abuse', paged:true, serverPaged:true, needsAgent:true, needsQueue:true, needsReason:true },
+    queue_summary_sla: { endpoint:'api/admin/reports/queue_summary_sla', paged:false, serverPaged:false, needsAgent:false, needsQueue:true, needsReason:false },
+    hourly_traffic: { endpoint:'api/admin/reports/hourly_traffic', paged:false, serverPaged:false, needsAgent:false, needsQueue:true, needsReason:false },
+    queue_calls_detail: { endpoint:'api/admin/reports/queue_calls_detail', paged:true, serverPaged:true, needsAgent:true, needsQueue:true, needsReason:false },
+    outbound_calls: { endpoint:'api/admin/reports/outbound_calls', paged:true, serverPaged:true, needsAgent:true, needsQueue:false, needsReason:false },
+  };
+  return map[id];
+}
+
+function mergeCustomReportsIntoCats(rows) {
+  customReportsCache = Array.isArray(rows) ? rows : [];
+  REPORT_CATS = { agents: BUILTIN_REPORT_CATS.agents.slice(), queues: BUILTIN_REPORT_CATS.queues.slice(), calls: BUILTIN_REPORT_CATS.calls.slice() };
+  for (const r of customReportsCache) {
+    const cat = (r.category && REPORT_CATS[r.category]) ? r.category : 'agents';
+    REPORT_CATS[cat].push({ id: 'custom:'+r.id, label: String(r.title||('Custom #'+r.id)), custom:true });
+  }
+}
+
+async function loadActiveCustomReports() {
+  try {
+    const req = await fetch(adminUrl('api/admin/custom-reports?active=1'), { headers: adminHeaders() });
+    if (!req.ok) return;
+    const data = await req.json();
+    mergeCustomReportsIntoCats(data.rows || []);
+  } catch(e) { /* keep built-ins */ }
+}
+
+function setReportCategory(cat, opts) {
+  opts = opts || {};
+  reportCategory = cat;
+  for (const b of document.querySelectorAll('#report-cat-tabs .nav-link')) b.classList.toggle('active', b.getAttribute('data-cat')===cat);
+  const subs = REPORT_CATS[cat] || [];
+  const sel = el('report-sub');
+  const prev = reportSub;
+  if (sel) sel.innerHTML = subs.map(s=>'<option value="'+s.id+'">'+escapeHtml(s.label)+'</option>').join('');
+  if (prev && subs.some(s=>s.id===prev)) reportSub = prev; else reportSub = subs.length ? subs[0].id : '';
+  if (sel && reportSub) sel.value = reportSub;
+  if (opts.skipLoad) { updateReportFilterVisibility(); }
+  else { onReportSubChange(); }
+}
+function updateReportFilterVisibility() {
+  const cfg = reportCfg(reportSub) || {};
+  if (el('wrap-report-agent')) el('wrap-report-agent').style.display = cfg.needsAgent ? '' : 'none';
+  if (el('wrap-report-queue')) el('wrap-report-queue').style.display = cfg.needsQueue ? '' : 'none';
+  if (el('wrap-report-reason')) el('wrap-report-reason').style.display = cfg.needsReason ? '' : 'none';
+}
+function applyReportFilter(){ loadReports(true); }
+
+function onReportSubChange() {
+  if (el('report-sub')) reportSub = el('report-sub').value;
+  updateReportFilterVisibility();
+  loadReports(true);
+}
+function onReportEntriesChange(){ reportPerPage = parseInt(el('report-entries').value,10)||50; reportPage=1; renderReportPage(); }
+
+function loadReportFilters() {
+  if (reportFiltersLoaded) return;
+  const req = new XMLHttpRequest();
+  req.open('GET', adminUrl('api/admin/reports/filters'), true);
+  req.setRequestHeader('Authorization','Bearer '+token());
+  req.onload = function(){
+    if (req.status === 401) { setStatus('unauthorized','text-danger'); return; }
+    if (req.status !== 200) return;
+    if (token()) setStatus('connected','text-success');
+    try{ const d=JSON.parse(req.responseText); fillReportAgentOptions(d.agents||[]); fillReportQueueOptions(d.queues||[]); reportFiltersLoaded=true; }catch(e){}
+  };
+  req.send();
+}
+function initSearchableAgentSelect(selectEl) {
+  const sel = (typeof selectEl === 'string') ? el(selectEl) : selectEl;
+  if (!sel || sel.dataset.agentCombo === '1') return;
+  sel.dataset.agentCombo = '1';
+  sel.style.display = 'none';
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-combo';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = sel.className || 'form-control';
+  input.placeholder = 'All agents';
+  input.setAttribute('autocomplete', 'off');
+  const chev = document.createElement('span'); chev.className = 'ac-chev'; chev.textContent = '▾';
+  const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'ac-clear'; clear.innerHTML = '&times;'; clear.tabIndex = -1;
+  const list = document.createElement('div'); list.className = 'ac-list';
+  wrap.appendChild(input); wrap.appendChild(chev); wrap.appendChild(clear); wrap.appendChild(list);
+  sel.parentNode.insertBefore(wrap, sel.nextSibling);
+
+  let active = -1;
+  function opts() { return Array.from(sel.options); }
+  function labelOf(opt) { return opt ? (opt.getAttribute('data-label') || opt.textContent || '') : 'All agents'; }
+  function syncInput() {
+    const opt = sel.selectedOptions[0] || opts()[0];
+    const isAll = !sel.value;
+    input.value = isAll ? '' : labelOf(opt);
+    input.placeholder = 'All agents';
+    wrap.classList.toggle('has-value', !isAll && !!input.value);
+  }
+  function render() {
+    const q = input.dataset.filtering === '1' ? (input.value || '').toLowerCase() : '';
+    list.innerHTML = '';
+    const items = opts().filter(o => !q || (o.getAttribute('data-search') || labelOf(o)).toLowerCase().indexOf(q) !== -1);
+    if (!items.length) { const e = document.createElement('div'); e.className = 'ac-empty'; e.textContent = 'No agents'; list.appendChild(e); active = -1; return; }
+    items.forEach((o) => {
+      const it = document.createElement('div');
+      it.className = 'ac-item' + (o.value === sel.value ? ' active' : '');
+      it.textContent = labelOf(o);
+      it.onmousedown = function(ev){ ev.preventDefault(); choose(o.value); };
+      list.appendChild(it);
+    });
+    active = items.findIndex(o => o.value === sel.value);
+  }
+  function open(filtering) { input.dataset.filtering = filtering ? '1' : '0'; wrap.classList.add('open'); render(); }
+  function close(commit) { wrap.classList.remove('open'); input.dataset.filtering = '0'; if (commit) syncInput(); }
+  function choose(val) {
+    if (sel.value !== val) { sel.value = val; sel.dispatchEvent(new Event('change', {bubbles:true})); }
+    else { syncInput(); }
+    close(true);
+  }
+  input.addEventListener('focus', function(){ open(false); });
+  input.addEventListener('input', function(){ wrap.classList.toggle('has-value', !!input.value); open(true); });
+  input.addEventListener('keydown', function(e){
+    const items = Array.from(list.querySelectorAll('.ac-item'));
+    if (e.key === 'ArrowDown') { e.preventDefault(); open(true); if (items.length){ active = Math.min(active < 0 ? 0 : active+1, items.length-1); items.forEach((it,i)=>it.classList.toggle('active', i===active)); items[active].scrollIntoView({block:'nearest'});} }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length){ active = Math.max(active-1, 0); items.forEach((it,i)=>it.classList.toggle('active', i===active)); items[active].scrollIntoView({block:'nearest'});} }
+    else if (e.key === 'Enter') { if (wrap.classList.contains('open') && active >= 0 && items[active]) { e.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); } }
+    else if (e.key === 'Escape') { close(true); input.blur(); }
+  });
+  input.addEventListener('blur', function(){ setTimeout(function(){ close(true); }, 120); });
+  clear.addEventListener('mousedown', function(ev){ ev.preventDefault(); choose(''); input.focus(); });
+  sel.addEventListener('change', syncInput);
+  sel._agentComboSync = function(){ syncInput(); if (wrap.classList.contains('open')) render(); };
+  syncInput();
+}
+function syncAgentCombo(selectEl) {
+  const sel = (typeof selectEl === 'string') ? el(selectEl) : selectEl;
+  if (!sel) return;
+  if (!sel._agentComboSync) initSearchableAgentSelect(sel);
+  if (sel._agentComboSync) sel._agentComboSync();
+}
+function fillReportAgentOptions(list) {
+  const sel = el('report-agent'); if (!sel) return;
+  const cur = sel.value;
+  let html = '<option value="" data-label="All agents" data-search="all agents">All agents</option>';
+  for (const a of (list||[])) {
+    const label = (a.username||'') + ' (' + (a.extension||'') + ')';
+    const search = ((a.username||'') + ' ' + (a.extension||'')).toLowerCase();
+    html += '<option value="'+escapeHtml(a.id)+'" data-ext="'+escapeHtml(a.extension||'')+'" data-name="'+escapeHtml(a.username||'')+'" data-label="'+escapeHtml(label)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(label)+'</option>';
+  }
+  sel.innerHTML = html; if(cur) sel.value = cur;
+  syncAgentCombo(sel);
+}
+
+function fillReportAgents() {
+  if (!adminAgents || !adminAgents.length) return;
+  fillReportAgentOptions(adminAgents.map(function(a){ return { id: a.id, username: a.username, extension: a.sip_extension || a.extension || '' }; }));
+}
+
+function fillReportQueueOptions(list) {
+  const sel = el('report-queue'); const cur = sel.value;
+  let html = '<option value="">All queues</option>';
+  for (const q of list) html += '<option value="'+escapeHtml(q)+'">'+escapeHtml(q)+'</option>';
+  sel.innerHTML = html; if(cur) sel.value = cur;
+}
+
+function buildReportUrl(allRows) {
+  const cfg = reportCfg(reportSub);
+  const params = [];
+  params.push('from='+encodeURIComponent(el('report-from').value||''));
+  params.push('to='+encodeURIComponent(el('report-to').value||''));
+  if (cfg.needsAgent) {
+    const a = el('report-agent').value;
+    if (a) {
+      if (reportSub === 'requeue_abuse' || reportSub === 'queue_calls_detail') {
+        // send selected agent extension/name? easier send agent_id too and backend handles? requeue endpoint takes agent string (ext/name/id) we made; queue_calls takes agent string; outbound takes agent_id
+        const opt = el('report-agent').selectedOptions[0];
+        const ext = opt ? (opt.getAttribute('data-ext')||'') : '';
+        params.push('agent='+encodeURIComponent(ext || a));
+        params.push('agent_id='+encodeURIComponent(a));
+      } else {
+        params.push('agent_id='+encodeURIComponent(a));
+      }
+    }
+  }
+  if (cfg.needsQueue) { const q=el('report-queue').value; if(q) params.push('queue='+encodeURIComponent(q)); }
+  if (cfg.needsReason) { params.push('reason='+encodeURIComponent(el('report-reason').value||'ALL')); }
+  if (cfg.serverPaged) {
+    if (allRows) params.push('all=1'); else { params.push('page='+reportPage); params.push('per_page='+reportPerPage); }
+  }
+  return apiUrl(cfg.endpoint + '?' + params.join('&'));
+}
+
+async function loadReports(resetPage) {
+  if (resetPage) reportPage = 1;
+  try { await loadActiveCustomReports(); setReportCategory(reportCategory, { skipLoad:true }); } catch(e) {}
+  loadReportFilters();
+  const cfg = reportCfg(reportSub); if (!cfg) return;
+  const req = new XMLHttpRequest();
+  req.open('GET', buildReportUrl(false), true);
+  req.setRequestHeader('Authorization','Bearer '+token());
+  req.onload = function(){
+    if (req.status === 401) { setStatus('unauthorized', 'text-danger'); renderEmptyReport('unauthorized'); return; }
+    if (req.status !== 200) { let msg='error '+req.status; try{msg=(JSON.parse(req.responseText||'{}').error)||msg;}catch(e){} renderEmptyReport(msg); return; }
+    if (token()) setStatus('connected', 'text-success');
+    let data={}; try{ data=JSON.parse(req.responseText); }catch(e){ data={}; }
+    const rows = data.rows || [];
+    if (cfg.custom) {
+      reportTotal = Number(data.total || rows.length || 0);
+      reportLast.rawRows = rows; reportLast.customColumns = data.columns || (rows.length ? Object.keys(rows[0]) : []);
+      renderReportPage();
+      return;
+    }
+    if (cfg.serverPaged) {
+      reportTotal = Number(data.total || rows.length || 0);
+      reportLast.rawRows = rows;
+      renderMappedRows(rows, reportTotal, true);
+    } else {
+      reportLast.rawRows = rows;
+      reportTotal = rows.length;
+      renderReportPage();
+    }
+  };
+  req.onerror = function(){ renderEmptyReport('network error'); };
+  req.send();
+}
+
+function fmtSec(v){ if(v===null||v===undefined||v==='') return '—'; const n=Number(v); if(!Number.isFinite(n)) return escapeHtml(v); return fmtHMS(Math.max(0,Math.round(n))); }
+function fmtDateTime(v){ if(!v) return '-'; const d=new Date(v); return isNaN(d.getTime())?escapeHtml(v):(d.toLocaleDateString()+' '+d.toLocaleTimeString()); }
+function fmtDateOnly(v){ if(!v) return '-'; const d=new Date(v); return isNaN(d.getTime())?escapeHtml(v):d.toLocaleDateString(); }
+function fmtTimeOnly(v){ if(!v) return '-'; const d=new Date(v); return isNaN(d.getTime())?escapeHtml(v):d.toLocaleTimeString(); }
+function pct(v){ if(v===null||v===undefined||v==='') return '—'; const n=Number(v); return Number.isFinite(n)? n.toFixed(1)+'%':'—'; }
+function num1(v){ const n=Number(v); return Number.isFinite(n)? n.toFixed(1):'0.0'; }
+
+function mapReportRows(rawRows) {
+  const id = reportSub;
+  if (isCustomReportId(id)) {
+    const cols = (reportLast.customColumns && reportLast.customColumns.length) ? reportLast.customColumns : (rawRows.length ? Object.keys(rawRows[0]) : []);
+    const fmtVal = (v) => {
+      if (v === null || v === undefined) return '-';
+      if (typeof v === 'object') { try { return escapeHtml(JSON.stringify(v)); } catch(e){ return escapeHtml(String(v)); } }
+      return escapeHtml(String(v));
+    };
+    const plainVal = (v) => {
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'object') { try { return JSON.stringify(v); } catch(e){ return String(v); } }
+      return v;
+    };
+    return {
+      head: cols.slice(),
+      rows: rawRows.map(r => cols.map(c => fmtVal(r[c]))),
+      plain: rawRows.map(r => cols.map(c => plainVal(r[c]))),
+    };
+  }
+  if (id==='agent_log') {
+    return {
+      head:['Date','Agent','Extension','Event','Reason','Start Time','End Time','Duration','Duration (s)'],
+      rows: rawRows.map(r=>[
+        fmtDateOnly(r.event_time),
+        escapeHtml(r.username||''),
+        '<span class="mono">'+escapeHtml(r.sip_extension||'')+'</span>',
+        eventBadge(r.event_type),
+        r.reason_code?escapeHtml(r.reason_code):'-',
+        fmtTimeOnly(r.event_time),
+        r.end_time?fmtTimeOnly(r.end_time):'-',
+        (r.duration!==null&&r.duration!==undefined)?fmtDuration(r.duration):'-',
+        (r.end_time && r.duration!==null&&r.duration!==undefined)?String(Math.round(Number(r.duration))):'-'
+      ]),
+      plain: rawRows.map(r=>[
+        fmtDateOnly(r.event_time),
+        r.username||'',
+        r.sip_extension||'',
+        r.event_type||'',
+        r.reason_code||'',
+        fmtTimeOnly(r.event_time),
+        r.end_time?fmtTimeOnly(r.end_time):'',
+        (r.duration!=null)?fmtDuration(r.duration):'',
+        (r.end_time && r.duration!=null)?Math.round(Number(r.duration)):''
+      ])
+    };
+  }
+  if (id==='agent_performance') {
+    return { head:['Agent','Extension','Taken','Made','Total Talk Time','Avg Talk (AHT)','Pause Time','Timeout Count','Declined Count','Total Abuse'], rows: rawRows.map(r=>[escapeHtml(r.agent||''), '<span class="mono">'+escapeHtml(r.extension||'')+'</span>', r.taken||0, r.made||0, fmtSec(r.total_talk_time), fmtSec(r.avg_talk), fmtSec(r.pause_time), r.timeout_count||0, r.declined_count||0, r.total_abuse||0]), plain: rawRows.map(r=>[r.agent||'',r.extension||'',r.taken||0,r.made||0,Math.round(r.total_talk_time||0),Math.round(r.avg_talk||0),Math.round(r.pause_time||0),r.timeout_count||0,r.declined_count||0,r.total_abuse||0]) };
+  }
+  if (id==='requeue_abuse') {
+    return { head:['Date/Time','Caller ID','Queue','Agent','Reason','Ring Duration (s)'], rows: rawRows.map(r=>{ const rs=String(r.reason||'').toUpperCase(); const badge=rs==='DECLINED'?'<span class="badge reason-badge-declined">DECLINED</span>':'<span class="badge reason-badge-timeout">TIMEOUT</span>'; return [fmtDateTime(r.created_at), '<span class="mono">'+escapeHtml(r.caller_id||'')+'</span>', escapeHtml(r.queue_name||''), escapeHtml(r.agent||''), badge, (Number(r.ring_duration_ms||0)/1000).toFixed(1)]; }), plain: rawRows.map(r=>[fmtDateTime(r.created_at),r.caller_id||'',r.queue_name||'',r.agent||'',String(r.reason||''),(Number(r.ring_duration_ms||0)/1000).toFixed(1)]) };
+  }
+  if (id==='queue_summary_sla') {
+    return { head:['Queue','Total Calls','Completed','Abandoned','Abandon %','AVG QSA (s)','AVG Talk (s)','SLA %'], rows: rawRows.map(r=>[escapeHtml(r.queue||''), r.total_calls||0, r.completed||0, r.abandoned||0, pct(r.abandon_pct), num1(r.avg_qsa), num1(r.avg_talk), r.sla_pct==null?'—':pct(r.sla_pct)]), plain: rawRows.map(r=>[r.queue||'',r.total_calls||0,r.completed||0,r.abandoned||0,Number(r.abandon_pct||0).toFixed(1),Number(r.avg_qsa||0).toFixed(1),Number(r.avg_talk||0).toFixed(1),r.sla_pct==null?'':Number(r.sla_pct).toFixed(1)]) };
+  }
+  if (id==='hourly_traffic') {
+    return { head:['Hour','Total','Completed','Abandoned','AVG QSA (s)'], rows: rawRows.map(r=>[escapeHtml(r.hour||''), r.total||0, r.completed||0, r.abandoned||0, num1(r.avg_qsa)]), plain: rawRows.map(r=>[r.hour||'',r.total||0,r.completed||0,r.abandoned||0,Number(r.avg_qsa||0).toFixed(1)]) };
+  }
+  if (id==='queue_calls_detail') {
+    return { head:['Date/Time','Caller ID','Queue','Agent','Wait Time','Talk Time','Status'], rows: rawRows.map(r=>[fmtDateTime(r.datetime), '<span class="mono">'+escapeHtml(r.caller_id||'')+'</span>', escapeHtml(r.queue||''), escapeHtml(r.agent||''), r.wait_time!=null?fmtSec(r.wait_time):'—', r.talk_time!=null?fmtSec(r.talk_time):'—', escapeHtml(r.status||'')]), plain: rawRows.map(r=>[fmtDateTime(r.datetime),r.caller_id||'',r.queue||'',r.agent||'',r.wait_time!=null?Math.round(r.wait_time):'',r.talk_time!=null?Math.round(r.talk_time):'',r.status||'']) };
+  }
+  if (id==='outbound_calls') {
+    return { head:['Date/Time','Agent','Extension','Destination','Duration','Disposition'], rows: rawRows.map(r=>[fmtDateTime(r.datetime), escapeHtml(r.agent||''), '<span class="mono">'+escapeHtml(r.extension||'')+'</span>', '<span class="mono">'+escapeHtml(r.destination||'')+'</span>', fmtSec(r.duration), escapeHtml(r.disposition||'')]), plain: rawRows.map(r=>[fmtDateTime(r.datetime),r.agent||'',r.extension||'',r.destination||'',Math.round(r.duration||0),r.disposition||'']) };
+  }
+  return { head:[], rows:[], plain:[] };
+}
+
+function renderMappedRows(rawRows, total, serverPaged) {
+  const mapped = mapReportRows(rawRows);
+  reportLast.head = mapped.head; reportLast.plainRows = mapped.plain; reportLast.htmlRows = mapped.rows;
+  renderTable(mapped.head, mapped.rows, total, serverPaged);
+}
+function renderReportPage() {
+  const all = reportLast.rawRows || [];
+  const total = all.length; reportTotal = total;
+  const start = (reportPage-1)*reportPerPage;
+  const pageRows = all.slice(start, start+reportPerPage);
+  renderMappedRows(pageRows, total, false);
+}
+
+function renderEmptyReport(msg) {
+  try {
+    const head = (reportLast && reportLast.head && reportLast.head.length) ? reportLast.head : ['Info'];
+    const label = msg ? ('no data (' + escapeHtml(String(msg)) + ')') : 'no line';
+    renderTable(head, [], 0, true);
+    if (el('report-rows')) el('report-rows').innerHTML = '<tr><td colspan="'+(head.length||1)+'" class="text-center text-muted py-4">'+label+'</td></tr>';
+  } catch(e) {}
+}
+
+function renderTable(head, rows, total, serverPaged) {
+  let h=''; for(const t of head) h+='<th>'+escapeHtml(t)+'</th>'; el('report-head').innerHTML = head.length?'<tr>'+h+'</tr>':'';
+  let body = rows.map(function(cells){ return '<tr><td>'+cells.join('</td><td>')+'</td></tr>'; });
+  if(!body.length) body=['<tr><td colspan="'+(head.length||1)+'" class="text-center text-muted py-4">no line</td></tr>'];
+  el('report-rows').innerHTML = body.join('');
+  const pages = Math.max(1, Math.ceil((total||0)/reportPerPage));
+  if (reportPage>pages) reportPage = pages;
+  const fromN = total ? ((reportPage-1)*reportPerPage + 1) : 0;
+  const toN = total ? Math.min(reportPage*reportPerPage, total) : 0;
+  el('report-count').textContent = 'Showing ' + fromN + ' to ' + toN + ' of ' + (total||0) + ' entries · page ' + reportPage + ' of ' + pages;
+  el('report-prev').disabled = reportPage <= 1;
+  el('report-next').disabled = reportPage >= pages;
+}
+function moveReports(dir) {
+  const cfg = reportCfg(reportSub);
+  const pages = Math.max(1, Math.ceil((reportTotal||0)/reportPerPage));
+  const next = reportPage + dir;
+  if (next < 1 || next > pages) return;
+  reportPage = next;
+  if (cfg.serverPaged) loadReports(false); else renderReportPage();
+}
+function resetReports() {
+  const today = todayStr();
+  if (el('report-from')) el('report-from').value = today;
+  if (el('report-to')) el('report-to').value = today;
+  if (el('report-agent')) el('report-agent').value = '';
+  if (el('report-queue')) el('report-queue').value = '';
+  if (el('report-reason')) el('report-reason').value = 'ALL';
+  reportPage = 1;
+  loadReports(true);
+}
+
+function reportFilename(ext) {
+  const label = (REPORT_CATS[reportCategory]||[]).find(s=>s.id===reportSub);
+  const name = (label?label.label:reportSub).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const d = todayStr();
+  return name + '_' + d + '.' + ext;
+}
+function csvEscape(v){ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+async function fetchAllRowsForExport() {
+  const cfg = reportCfg(reportSub);
+  if (!cfg.serverPaged) return reportLast.rawRows || [];
+  const req = await fetch((()=>{let u=buildReportUrl(true); if(issabelSso){u+=(u.indexOf('?')==-1?'?':'&')+'issabel_sso='+encodeURIComponent(issabelSso);} return u;})(), { headers: adminHeaders() });
+  if (!req.ok) throw new Error('export fetch failed');
+  const data = await req.json();
+  return data.rows || [];
+}
+async function exportReport(kind) {
+  try {
+    const raw = await fetchAllRowsForExport();
+    const mapped = mapReportRows(raw);
+    const head = mapped.head; const rows = mapped.plain;
+    if (kind === 'csv') {
+      let out = '\uFEFF' + head.map(csvEscape).join(',') + '\n';
+      for (const r of rows) out += r.map(csvEscape).join(',') + '\n';
+      const blob = new Blob([out], {type:'text/csv;charset=utf-8;'});
+      downloadBlob(blob, reportFilename('csv'));
+    } else {
+      let html = '<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>';
+      for (const h of head) html += '<th>'+String(h).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</th>';
+      html += '</tr></thead><tbody>';
+      for (const r of rows) { html += '<tr>'; for (const c of r) html += '<td>'+String(c==null?'':c).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</td>'; html += '</tr>'; }
+      html += '</tbody></table></body></html>';
+      const blob = new Blob([html], {type:'application/vnd.ms-excel;charset=utf-8;'});
+      downloadBlob(blob, reportFilename('xls'));
+    }
+  } catch (e) { setStatus('export failed','text-danger'); }
+}
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+function initReportsUI() {
+  if (!el('report-from') || !el('report-to')) return;
+  const t = todayStr();
+  if (!el('report-from').value) el('report-from').value = t;
+  if (!el('report-to').value) el('report-to').value = t;
+  // populate sub-report dropdown immediately
+  if (!el('report-sub') || !el('report-sub').options.length) setReportCategory('agents');
+  else if (!reportSub) setReportCategory('agents');
+  loadActiveCustomReports().then(() => setReportCategory(reportCategory, { skipLoad:true })).catch(()=>{});
+}
+
+// ----- connection -----
+function setStatus(text, color) { const line = el('status-line'); line.textContent = text; line.className = 'navbar-text ' + (color || ''); }
+function tryConnect() { if (!token() && !issabelSso) { setStatus('unauthorized', 'text-danger'); return; } openSocket(); }
+let wsConnected = false;
+function openSocket() {
+    if (!token() && !issabelSso) { wsConnected = false; setStatus('unauthorized', 'text-danger'); return; }
+    try { if (socket) { socket.onclose = null; socket.close(); } } catch(e) {}
+    socket = null;
+    setStatus('connecting...', 'text-warning');
+    try { socket = new WebSocket(wsUrl()); } catch(e) { wsConnected = false; scheduleReconnect(); return; }
+    socket.onopen = function () {
+        wsConnected = true; retry = 1000; setStatus('connected', 'text-success');
+        try { if (authMode !== 'agent') refresh(); } catch(e) {}
+        try { const v=(location.hash||'').replace(/^#/,'').split(/[?&]/)[0]||'monitor'; if (authMode !== 'agent' && v !== 'reports' && v !== 'report-builder') loadAgents(true); } catch(e) {}
+    };
+    socket.onmessage = function (event) {
+      let msg={}; try{msg=JSON.parse(event.data);}catch(e){return;}
+      if (msg.event === 'supervisor_update') { if (authMode !== 'agent') applyState(msg.agents||[], msg.queues, msg.kpis); }
+      else if (msg.type === 'crm_screen_pop') handleCrmScreenPop(msg);
+      else if (msg.type === 'crm_ticket_assigned') handleCrmTicketAssigned(msg);
+    };
+    socket.onclose = function () { wsConnected = false; socket = null; if (!token()) { setStatus('unauthorized','text-danger'); return; } scheduleReconnect(); };
+    socket.onerror = function () { /* close handler handles retry/status */ };
+}
+function scheduleReconnect() {
+    if (!token()) { setStatus('unauthorized','text-danger'); return; }
+    const v = (location.hash||'').replace(/^#/,'').split(/[?&]/)[0] || 'monitor';
+    // keep WS retrying, but don't spam status on reports where REST is enough
+    if (v !== 'reports' && v !== 'report-builder') setStatus('reconnecting in '+Math.round(retry/1000)+'s...', 'text-warning');
+    setTimeout(function(){ if(token()) openSocket(); }, retry);
+    retry = Math.min(retry*2, 30000);
+}
+async function fetchCrmSession() {
+  if (!issabelSso && !token()) return null;
+  try {
+    const q = issabelSso ? ('?issabel_sso=' + encodeURIComponent(issabelSso)) : '';
+    const headers = {};
+    if (!issabelSso && token()) headers['Authorization'] = 'Bearer ' + token();
+    const r = await fetch(apiUrl('api/crm/session' + q), { headers });
+    if (!r.ok) return null;
+    const d = await r.json().catch(()=>null);
+    if (!d || !d.ok) return null;
+    issabelUser = d.issabel_user || issabelUser || '';
+    authMode = d.role === 'agent' ? 'agent' : 'admin';
+    currentAgent = d.role === 'agent' ? { id: d.agent_id, username: d.agent_name, extension: d.agent_ext } : null;
+    applyAuthMode();
+    return d;
+  } catch(e) { return null; }
+}
+function refresh() {
+    if (!token() && !issabelSso) return;
+    if (authMode === 'agent') return;
+    const request = new XMLHttpRequest();
+    request.open('GET', adminUrl('api/admin/live_state'), true);
+    request.setRequestHeader('Authorization','Bearer '+adminAuthToken());
+    request.onload = function () {
+        if (request.status === 200) {
+            try { const data=JSON.parse(request.responseText); applyKnown(data.known||[]); applyState(data.agents||[], data.queues, data.kpis); } catch(e) {}
+            return;
+        }
+        if (request.status === 401) { wsConnected = false; setStatus('unauthorized','text-danger'); }
+    };
+    request.onerror = function () { /* ignore */ };
+    request.send();
+}
+
+function updateIdentityBadge() {
+  const b = el('identity-badge'); if (!b) return;
+  if (authMode === 'agent' && currentAgent) {
+    b.textContent = 'Agent: ' + (currentAgent.username || 'agent') + ' (' + (currentAgent.extension || '') + ')';
+    b.className = 'badge text-bg-info';
+  } else if (authMode === 'admin') {
+    b.textContent = issabelUser ? ('Supervisor (' + issabelUser + ')') : 'Supervisor (admin)';
+    b.className = 'badge text-bg-secondary';
+  } else {
+    b.textContent = 'Not signed in';
+    b.className = 'badge text-bg-warning';
+  }
+}
+function applyAuthMode() {
+  const agent = authMode === 'agent';
+  document.body.classList.toggle('agent-mode', agent);
+  if (el('app-brand')) el('app-brand').textContent = agent ? 'Agent Workspace' : 'Call Center Supervisor Dashboard';
+  updateIdentityBadge();
+  if (agent) {
+    if (el('crm-q-owner')) el('crm-q-owner').value = 'mine';
+    if (crmOwnerFilter !== 'mine') { crmOwnerFilter = 'mine'; }
+  }
+  applyCrmDeepLinkLayout();
+}
+
+function adminBreak(extension) { postAdmin('simulate/state', {extension: extension, status:'pause', reason:'AdminBreak'}, function(st){ if(st!==200) setStatus('the agent could not be paused ('+st+')','text-danger'); }); }
+
+window.addEventListener('load', function () {
+  try {
+    const params = new URLSearchParams(location.search);
+    issabelSso = params.get('issabel_sso') || params.get('sso') || '';
+    const fromLink = params.get('token') || params.get('admin_token') || '';
+    let hashToken = '';
+    try { const hm = (location.hash||'').match(/[?&](?:token|issabel_sso|sso)=([^&]+)/); if (hm) hashToken = decodeURIComponent(hm[1]); } catch(e) {}
+    if (!issabelSso && /issabel_sso|sso/.test(location.hash||'')) {
+      try { const m=(location.hash||'').match(/[?&](?:issabel_sso|sso)=([^&]+)/); if(m) issabelSso = decodeURIComponent(m[1]); } catch(e){}
+    }
+    const candidate = fromLink || hashToken || localStorage.getItem(AGENT_TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
+    if (!issabelSso && candidate) {
+      authToken = candidate;
+      const d = detectAuthFromToken(candidate);
+      authMode = d.mode; currentAgent = d.agent;
+      if (authMode === 'agent') { localStorage.setItem(AGENT_TOKEN_KEY, candidate); if (currentAgent) localStorage.setItem(AGENT_INFO_KEY, JSON.stringify(currentAgent)); localStorage.removeItem(TOKEN_KEY); }
+      else { localStorage.setItem(TOKEN_KEY, candidate); localStorage.removeItem(AGENT_TOKEN_KEY); localStorage.removeItem(AGENT_INFO_KEY); }
+    } else {
+      try { currentAgent = JSON.parse(localStorage.getItem(AGENT_INFO_KEY) || 'null'); } catch(e) { currentAgent = null; }
+    }
+    if (issabelSso) { authToken = ''; localStorage.removeItem(AGENT_TOKEN_KEY); localStorage.removeItem(TOKEN_KEY); }
+    applyAuthMode();
+
+    if (!token()) setStatus('unauthorized', 'text-danger'); else setStatus('connecting...', 'text-warning');
+
+    try { initAgentQueuePopovers(); } catch(e) { console.error('initAgentQueuePopovers', e); }
+    try { initCrmUiHandlers(); } catch(e) { console.error('initCrmUiHandlers', e); }
+    try { initAuthUiHandlers(); } catch(e) { console.error('initAuthUiHandlers', e); }
+
+    let initialView = (location.hash || '').replace(/^#/, '').split(/[?&]/)[0] || (authMode === 'agent' ? 'crm' : 'monitor');
+    if (authMode === 'agent' && ['monitor','reports','report-builder','agents','pauses'].indexOf(initialView) !== -1) initialView = 'crm';
+    if (initialView === 'reports' && authMode !== 'agent') {
+      const t = todayStr();
+      if (el('report-from') && !el('report-from').value) el('report-from').value = t;
+      if (el('report-to') && !el('report-to').value) el('report-to').value = t;
+      try { setReportCategory('agents', { skipLoad: true }); } catch(e) { console.error('setReportCategory', e); }
+    }
+
+    const startSession = async function() {
+      if (issabelSso) { await fetchCrmSession(); }
+      else if (token()) { /* legacy token */ }
+      applyAuthMode();
+      try { tryConnect(); } catch(e) { console.error('tryConnect', e); }
+      try { showView(initialView); } catch(e) { console.error('showView', e); }
+    };
+    startSession();
+
+    if (initialView === 'reports' && authMode !== 'agent') {
+      try { loadReportFilters(); } catch(e) { console.error('loadReportFilters', e); }
+      try { loadReports(true); } catch(e) { console.error('loadReports', e); }
+    }
+    if (initialView === 'report-builder' && authMode !== 'agent') {
+      try { initReportBuilderUI(); } catch(e) { console.error('initReportBuilderUI', e); }
+      try { loadCustomReportsAdmin(); } catch(e) { console.error('loadCustomReportsAdmin', e); }
+    }
+
+    window.addEventListener('hashchange', function () {
+      try { showView((location.hash||'').replace(/^#/, '').split(/[?&]/)[0] || (authMode==='agent'?'crm':'monitor')); } catch(e) { console.error(e); }
+    });
+    ['a-search','a-status'].forEach(id => { if (el(id)) el(id).addEventListener('input', function(){ aPage=1; renderMonitorAgents(); }); });
+    if (el('a-entries')) el('a-entries').addEventListener('change', function(){ aPage=1; renderMonitorAgents(); });
+    if (el('q-search')) el('q-search').addEventListener('input', function(){ qPage=1; renderMonitorQueues(); });
+    if (el('q-entries')) el('q-entries').addEventListener('change', function(){ qPage=1; renderMonitorQueues(); });
+    try { updateWaitingPopover(); } catch(e) {}
+    setInterval(function(){ try{ if (authMode !== 'agent') renderMonitor(); }catch(e){ console.error('tick',e); } }, 1000);
+  } catch (err) {
+    console.error('init failed', err);
+    try { setStatus('init error: ' + (err && (err.message||String(err)) || 'unknown'), 'text-danger'); } catch(e) {}
+    try { const v=(location.hash||'').replace(/^#/,'').split(/[?&]/)[0]||(authMode==='agent'?'crm':'monitor'); showView(v); } catch(e) {}
+  }
+});
+
+
+// ----- report builder -----
+let rbCategory = 'agents';
+function initReportBuilderUI() {
+  rbCategory = 'agents';
+  rbSetCategory('agents');
+  if (el('rb-sql')) el('rb-sql').setAttribute('readonly', 'readonly');
+  const t = todayStr();
+  if (el('rb-p-from') && !el('rb-p-from').value) el('rb-p-from').value = t;
+  if (el('rb-p-to') && !el('rb-p-to').value) el('rb-p-to').value = t;
+  rbLoadPreviewFilters();
+  rbUpdatePreviewInputs();
+  initRbSplitter();
+}
+
+function initRbSplitter() {
+  const container = el('view-report-builder');
+  const top = el('rb-top-pane');
+  const splitter = el('rb-h-splitter');
+  if (!container || !top || !splitter || splitter.dataset.ready === '1') return;
+  splitter.dataset.ready = '1';
+  const SPLIT_KEY = 'cc_rb_split_ratio';
+  const DEFAULT_RATIO = 0.56;
+  function clampRatio(r) { return Math.max(0.15, Math.min(0.85, r)); }
+  function applyRatio(r) {
+    if (!container || !top) return;
+    r = clampRatio(r);
+    const h = container.clientHeight || 0;
+    const splitH = 10;
+    const minTop = 220;
+    const minBottom = 160;
+    if (h > (minTop + minBottom + splitH)) {
+      let topPx = Math.round(r * h);
+      if (topPx < minTop) topPx = minTop;
+      if (h - topPx - splitH < minBottom) topPx = h - splitH - minBottom;
+      top.style.flex = '0 0 ' + topPx + 'px';
+    } else {
+      top.style.flex = '0 0 ' + Math.round(r * 100) + '%';
+    }
+  }
+  function saveRatio() {
+    const h = container.clientHeight || 0;
+    if (h > 0) {
+      const r = (top.getBoundingClientRect().height) / h;
+      localStorage.setItem(SPLIT_KEY, String(clampRatio(r)));
+    }
+  }
+  function restoreRatio() {
+    let r = parseFloat(localStorage.getItem(SPLIT_KEY));
+    if (!isFinite(r)) r = DEFAULT_RATIO;
+    applyRatio(r);
+  }
+  let dragging = false;
+  let startY = 0, startH = 0;
+  function onMove(clientY) {
+    if (!dragging) return;
+    const h = container.clientHeight || 1;
+    const splitH = 10;
+    const minTop = 220;
+    const minBottom = 170;
+    let newH = startH + (clientY - startY);
+    if (newH < minTop) newH = minTop;
+    if (h - newH - splitH < minBottom) newH = h - splitH - minBottom;
+    top.style.flex = '0 0 ' + newH + 'px';
+  }
+  function stopDrag() {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    saveRatio();
+  }
+  splitter.addEventListener('mousedown', function(e){ dragging = true; startY = e.clientY; startH = top.getBoundingClientRect().height; splitter.classList.add('active'); document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none'; e.preventDefault(); });
+  window.addEventListener('mousemove', function(e){ onMove(e.clientY); });
+  window.addEventListener('mouseup', stopDrag);
+  splitter.addEventListener('touchstart', function(e){ const t=e.touches[0]; dragging=true; startY=t.clientY; startH=top.getBoundingClientRect().height; splitter.classList.add('active'); }, {passive:true});
+  window.addEventListener('touchmove', function(e){ if(!dragging) return; onMove(e.touches[0].clientY); }, {passive:true});
+  window.addEventListener('touchend', stopDrag);
+  splitter.addEventListener('dblclick', function(){ localStorage.setItem(SPLIT_KEY, String(DEFAULT_RATIO)); applyRatio(DEFAULT_RATIO); });
+  window.addEventListener('resize', function(){ restoreRatio(); });
+  restoreRatio();
+}
+function rbSetCategory(cat) {
+  rbCategory = cat;
+  for (const b of document.querySelectorAll('#rb-cat-tabs .nav-link')) b.classList.toggle('active', b.getAttribute('data-cat')===cat);
+}
+function rbUpdatePreviewInputs() {
+  if (el('rb-p-agent')) el('rb-p-agent').style.display = (el('rb-f-agent') && el('rb-f-agent').checked) ? '' : 'none';
+  if (el('rb-p-queue')) el('rb-p-queue').style.display = (el('rb-f-queue') && el('rb-f-queue').checked) ? '' : 'none';
+  if (el('rb-p-reason')) el('rb-p-reason').style.display = (el('rb-f-reason') && el('rb-f-reason').checked) ? '' : 'none';
+}
+async function rbLoadPreviewFilters() {
+  try {
+    const req = await fetch(adminUrl('api/admin/reports/filters'), { headers: adminHeaders() });
+    if (!req.ok) return;
+    const data = await req.json();
+    if (el('rb-p-agent')) {
+      const cur = el('rb-p-agent').value;
+      let opts = '<option value="" data-label="All agents" data-search="all agents">All agents</option>';
+      for (const a of (data.agents||[])) {
+        const label = (a.username||'') + ' (' + (a.extension||'') + ')';
+        const search = ((a.username||'') + ' ' + (a.extension||'')).toLowerCase();
+        opts += '<option value="'+escapeHtml(a.extension||'')+'" data-label="'+escapeHtml(label)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(label)+'</option>';
+      }
+      el('rb-p-agent').innerHTML = opts;
+      if (cur) el('rb-p-agent').value = cur;
+      syncAgentCombo(el('rb-p-agent'));
+    }
+    if (el('rb-p-queue')) {
+      const cur = el('rb-p-queue').value;
+      let opts = '<option value="">All queues</option>';
+      for (const q of (data.queues||[])) opts += '<option value="'+escapeHtml(q)+'">'+escapeHtml(q)+'</option>';
+      el('rb-p-queue').innerHTML = opts;
+      if (cur) el('rb-p-queue').value = cur;
+    }
+  } catch(e) {}
+}
+function rbToggleSqlEdit() {
+  const ta = el('rb-sql'); if (!ta) return;
+  if (ta.hasAttribute('readonly')) { ta.removeAttribute('readonly'); ta.focus(); }
+  else { ta.setAttribute('readonly','readonly'); }
+}
+function rbInsertParam(p) {
+  const ta = el('rb-sql'); if (!ta) return;
+  ta.removeAttribute('readonly');
+  const start = ta.selectionStart || ta.value.length;
+  const end = ta.selectionEnd || ta.value.length;
+  ta.value = ta.value.slice(0,start) + p + ta.value.slice(end);
+  const pos = start + p.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+}
+function rbGetFilters() {
+  const f = ['date'];
+  if (el('rb-f-agent') && el('rb-f-agent').checked) f.push('agent');
+  if (el('rb-f-queue') && el('rb-f-queue').checked) f.push('queue');
+  if (el('rb-f-reason') && el('rb-f-reason').checked) f.push('reason');
+  return f;
+}
+function rbSetMsg(msg, ok) {
+  const m = el('rb-msg'); if (!m) return;
+  m.textContent = msg || '';
+  m.className = 'mt-2 small ' + (ok ? 'text-success' : (msg ? 'text-danger' : 'text-muted'));
+}
+function rbResetForm() {
+  if (el('rb-id')) el('rb-id').value = '';
+  if (el('rb-title')) el('rb-title').value = '';
+  if (el('rb-sql')) { el('rb-sql').value = ''; el('rb-sql').setAttribute('readonly','readonly'); }
+  if (el('rb-f-agent')) el('rb-f-agent').checked = false;
+  if (el('rb-f-queue')) el('rb-f-queue').checked = false;
+  if (el('rb-f-reason')) el('rb-f-reason').checked = false;
+  if (el('rb-p-agent')) el('rb-p-agent').value = '';
+  if (el('rb-p-queue')) el('rb-p-queue').value = '';
+  if (el('rb-p-reason')) el('rb-p-reason').value = '';
+  const tday = todayStr(); if (el('rb-p-from')) el('rb-p-from').value = tday; if (el('rb-p-to')) el('rb-p-to').value = tday;
+  rbSetCategory('agents');
+  rbUpdatePreviewInputs();
+  const t = el('rb-form-title'); if (t) t.textContent = 'Create Custom Report';
+  rbSetMsg('', true);
+  if (el('rb-preview-head')) el('rb-preview-head').innerHTML = '';
+  if (el('rb-preview-body')) el('rb-preview-body').innerHTML = '<tr><td class="text-center text-muted py-4">Run preview to see results</td></tr>';
+}
+function rbRenderPreview(columns, rows, err) {
+  if (err) {
+    if (el('rb-preview-head')) el('rb-preview-head').innerHTML = '';
+    if (el('rb-preview-body')) el('rb-preview-body').innerHTML = '<tr><td class="text-danger p-3">'+escapeHtml(String(err))+'</td></tr>';
+    return;
+  }
+  const cols = columns || (rows && rows.length ? Object.keys(rows[0]) : []);
+  let h=''; for (const c of cols) h += '<th>'+escapeHtml(String(c))+'</th>';
+  if (el('rb-preview-head')) el('rb-preview-head').innerHTML = cols.length ? '<tr>'+h+'</tr>' : '';
+  if (!rows || !rows.length) {
+    if (el('rb-preview-body')) el('rb-preview-body').innerHTML = '<tr><td colspan="'+(cols.length||1)+'" class="text-center text-muted py-4">no rows</td></tr>';
+    return;
+  }
+  const fmt = (v) => (v===null||v===undefined)?'-':(typeof v==='object'?escapeHtml(JSON.stringify(v)):escapeHtml(String(v)));
+  const body = rows.map(r => '<tr><td>'+cols.map(c=>fmt(r[c])).join('</td><td>')+'</td></tr>').join('');
+  if (el('rb-preview-body')) el('rb-preview-body').innerHTML = body;
+}
+async function rbPreview() {
+  const sql = (el('rb-sql') && el('rb-sql').value || '').trim();
+  if (!sql) { rbSetMsg('sql_query is required', false); return; }
+  rbSetMsg('Running preview...', true);
+  try {
+    const body = {
+      sql_query: sql,
+      from: (el('rb-p-from') && el('rb-p-from').value) || (el('report-from') ? el('report-from').value : ''),
+      to: (el('rb-p-to') && el('rb-p-to').value) || (el('report-to') ? el('report-to').value : ''),
+      agent: (el('rb-f-agent') && el('rb-f-agent').checked && el('rb-p-agent')) ? el('rb-p-agent').value : '',
+      queue: (el('rb-f-queue') && el('rb-f-queue').checked && el('rb-p-queue')) ? el('rb-p-queue').value : '',
+      reason: (el('rb-f-reason') && el('rb-f-reason').checked && el('rb-p-reason')) ? el('rb-p-reason').value : '',
+    };
+    const req = await fetch(adminUrl('api/admin/custom-reports/preview'), { method:'POST', headers: adminHeaders({'Content-Type':'application/json'}), body: JSON.stringify(body) });
+    const data = await req.json().catch(()=>({}));
+    if (!req.ok) { rbSetMsg(data.error || ('error '+req.status), false); rbRenderPreview([], [], data.error || ('error '+req.status)); return; }
+    rbRenderPreview(data.columns||[], data.rows||[]);
+    rbSetMsg('Preview ok ('+(data.rows?data.rows.length:0)+' rows, max 15)', true);
+  } catch(e) { rbSetMsg(e.message||'preview failed', false); rbRenderPreview([], [], e.message||'preview failed'); }
+}
+async function rbSave() {
+  const id = (el('rb-id') && el('rb-id').value) ? parseInt(el('rb-id').value,10) : 0;
+  const title = (el('rb-title') && el('rb-title').value || '').trim();
+  const sql = (el('rb-sql') && el('rb-sql').value || '').trim();
+  if (!title) { rbSetMsg('title is required', false); return; }
+  if (!sql) { rbSetMsg('sql_query is required', false); return; }
+  const payload = { title, category: rbCategory, filters: rbGetFilters(), sql_query: sql, is_active: true };
+  try {
+    const url = id ? ('api/admin/custom-reports/'+id) : 'api/admin/custom-reports';
+    const req = await fetch(adminUrl(url), { method: id ? 'PUT':'POST', headers: adminHeaders({'Content-Type':'application/json'}), body: JSON.stringify(payload) });
+    const data = await req.json().catch(()=>({}));
+    if (!req.ok) { rbSetMsg(data.error || ('error '+req.status), false); return; }
+    rbSetMsg(id ? 'Report updated' : 'Report saved', true);
+    if (!id && data.id && el('rb-id')) el('rb-id').value = String(data.id);
+    if (!id && el('rb-form-title')) el('rb-form-title').textContent = 'Edit Custom Report';
+    await loadCustomReportsAdmin();
+    await loadActiveCustomReports();
+  } catch(e) { rbSetMsg(e.message||'save failed', false); }
+}
+let rbReports = [];
+let rbAllReports = [];
+let rbSavedPage = 1;
+let rbSavedPageSize = 10;
+async function loadCustomReportsAdmin() {
+  try {
+    const req = await fetch(adminUrl('api/admin/custom-reports'), { headers: adminHeaders() });
+    if (!req.ok) return;
+    const data = await req.json();
+    rbReports = data.rows || [];
+    renderCustomReportsAdmin(rbReports);
+  } catch(e) {}
+}
+function rbSavedFiltered() {
+  const q = ((el('rb-saved-search') && el('rb-saved-search').value) || '').toLowerCase().trim();
+  return (rbAllReports || []).filter(r => {
+    if (!q) return true;
+    const filters = (r.filters||['date']).join(', ');
+    const hay = ((r.title||'')+' '+(r.category||'')+' '+filters).toLowerCase();
+    return hay.indexOf(q) !== -1;
+  });
+}
+function renderCustomReportsAdmin(reports) {
+  if (Array.isArray(reports)) rbAllReports = reports.slice();
+  const body = el('rb-saved-body'); if (!body) return;
+  const filtered = rbSavedFiltered();
+  const total = filtered.length;
+  const size = Math.max(1, parseInt((el('rb-saved-page-size') && el('rb-saved-page-size').value) || rbSavedPageSize || 10, 10) || 10);
+  rbSavedPageSize = size;
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (rbSavedPage > pages) rbSavedPage = pages;
+  if (rbSavedPage < 1) rbSavedPage = 1;
+  const startIdx = (rbSavedPage - 1) * size;
+  const pageRows = filtered.slice(startIdx, startIdx + size);
+
+  if (!pageRows.length) {
+    const msg = (rbAllReports && rbAllReports.length) ? 'no matching report' : 'no custom report';
+    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">'+msg+'</td></tr>';
+  } else {
+    body.innerHTML = pageRows.map(r => {
+      const filters = (r.filters||['date']).join(', ');
+      return '<tr>'
+        + '<td>'+escapeHtml(r.title||'')+'</td>'
+        + '<td>'+escapeHtml(r.category||'')+'</td>'
+        + '<td><span class="small mono">'+escapeHtml(filters)+'</span></td>'
+        + '<td><div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" '+(r.is_active?'checked':'')+' onchange="rbToggleActive('+r.id+', this.checked)"></div></td>'
+        + '<td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" onclick="rbEdit('+r.id+')">Edit</button><button class="btn btn-sm btn-outline-danger" onclick="rbDelete('+r.id+')">Delete</button></td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  const fromN = total ? (startIdx + 1) : 0;
+  const toN = total ? Math.min(startIdx + pageRows.length, total) : 0;
+  if (el('rb-saved-page-info')) {
+    el('rb-saved-page-info').textContent = total
+      ? ('Showing ' + fromN + ' to ' + toN + ' of ' + total + ' entries · page ' + rbSavedPage + ' of ' + pages)
+      : 'Showing 0 of 0 entries';
+  }
+  if (el('rb-saved-prev')) el('rb-saved-prev').disabled = rbSavedPage <= 1 || total === 0;
+  if (el('rb-saved-next')) el('rb-saved-next').disabled = rbSavedPage >= pages || total === 0;
+}
+
+function filterSavedCustomReports() { renderCustomReportsAdmin(); }
+function rbOnSavedSearch() { rbSavedPage = 1; renderCustomReportsAdmin(); }
+function rbOnSavedPageSizeChange() { rbSavedPageSize = parseInt((el('rb-saved-page-size') && el('rb-saved-page-size').value) || 10, 10) || 10; rbSavedPage = 1; renderCustomReportsAdmin(); }
+function rbMoveSavedPage(dir) {
+  const filtered = rbSavedFiltered();
+  const total = filtered.length;
+  const size = Math.max(1, rbSavedPageSize || 10);
+  const pages = Math.max(1, Math.ceil(total / size));
+  const next = rbSavedPage + dir;
+  if (next < 1 || next > pages) return;
+  rbSavedPage = next;
+  renderCustomReportsAdmin();
+}
+function rbEdit(id) {
+  const r = rbReports.find(x=>x.id===id); if (!r) return;
+  if (el('rb-id')) el('rb-id').value = String(r.id);
+  if (el('rb-title')) el('rb-title').value = r.title || '';
+  if (el('rb-sql')) { el('rb-sql').value = r.sql_query || ''; el('rb-sql').setAttribute('readonly','readonly'); }
+  rbSetCategory(r.category || 'agents');
+  const fs = r.filters || ['date'];
+  if (el('rb-f-agent')) el('rb-f-agent').checked = fs.indexOf('agent')!==-1;
+  if (el('rb-f-queue')) el('rb-f-queue').checked = fs.indexOf('queue')!==-1;
+  if (el('rb-f-reason')) el('rb-f-reason').checked = fs.indexOf('reason')!==-1;
+  rbUpdatePreviewInputs();
+  if (el('rb-form-title')) el('rb-form-title').textContent = 'Edit Custom Report';
+  rbSetMsg('Loaded report for editing', true);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+async function rbToggleActive(id, active) {
+  try {
+    await fetch(adminUrl('api/admin/custom-reports/'+id), { method:'PUT', headers: adminHeaders({'Content-Type':'application/json'}), body: JSON.stringify({is_active: !!active}) });
+    await loadCustomReportsAdmin(); await loadActiveCustomReports();
+  } catch(e) {}
+}
+async function rbDelete(id) {
+  if (!confirm('Delete this custom report?')) return;
+  try {
+    await fetch(adminUrl('api/admin/custom-reports/'+id), { method:'DELETE', headers:{'Authorization':'Bearer '+token()} });
+    if (String(el('rb-id') && el('rb-id').value) === String(id)) rbResetForm();
+    await loadCustomReportsAdmin(); await loadActiveCustomReports();
+  } catch(e) {}
+}
+function initReportBuilderView(){ initReportBuilderUI(); }
+function loadCustomReportsList(){ return loadCustomReportsAdmin(); }
+
+
+// ----- CRM -----
+let crmCustomers = [];
+let crmSelectedId = null;
+let crmPage = 1;
+let crmLimit = 20;
+let crmTotal = 0;
+let crmSearchTimer = null;
+let crmPendingPop = null;
+let crmDispositions = [];
+let crmCategories = [];
+let crmAgentsList = [];
+let crmOwnerFilter = 'all';
+let crmCategoryFilter = '';
+let crmLogContext = { cdr_uniqueid: '', agent_ext: '' };
+let crmCustomerTickets = [];
+let crmQueueTickets = [];
+let crmSubtab = 'profile';
+
+function crmTagClass(tagOrCat) {
+  const v = String(tagOrCat || 'Normal').toUpperCase();
+  if (v === 'VIP') return 'crm-badge-vip';
+  if (v === 'BLACKLIST') return 'crm-badge-blacklist';
+  return 'crm-badge-normal';
+}
+function crmFmtDate(v) { if (!v) return '—'; try { return String(v).replace('T',' ').replace(/\.000Z?$/,''); } catch(e){ return String(v); } }
+function crmCategoryLabel(code) {
+  const c = (crmCategories || []).find(x => String(x.code||'').toUpperCase() === String(code||'').toUpperCase());
+  return c ? c.label : (code || 'Normal');
+}
+
+async function initCrmView() {
+  try { await Promise.all([loadCrmDispositions(), loadCrmCategories(), loadCrmAgentsForSelects()]); } catch(e) {}
+  if (crmPendingPop) {
+    const pop = crmPendingPop; crmPendingPop = null;
+    await openCrmFromPop(pop);
+    return;
+  }
+  if (!crmCustomers.length) loadCrmCustomers();
+}
+
+function debounceCrmSearch() {
+  clearTimeout(crmSearchTimer);
+  crmSearchTimer = setTimeout(function(){ crmPage = 1; loadCrmCustomers(); }, 300);
+}
+
+async function loadCrmDispositions() {
+  if (!token()) return;
+  const data = await apiJson('api/crm/dispositions').catch(()=>({rows:[]}));
+  crmDispositions = data.rows || [];
+  const sel = el('crm-log-disposition');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">(none)</option>' + crmDispositions.map(d => '<option value="'+escapeHtml(d.code)+'">'+escapeHtml(d.label || d.code)+'</option>').join('');
+  if (cur) sel.value = cur;
+}
+
+async function loadCrmCategories() {
+  if (!token()) return;
+  const data = await apiJson('api/crm/categories').catch(()=>({rows:[]}));
+  crmCategories = data.rows || [];
+  const sel = el('crm-category');
+  const cur = sel ? sel.value : '';
+  if (sel) sel.innerHTML = (crmCategories.length ? crmCategories : [{code:'NORMAL',label:'Normal'},{code:'VIP',label:'VIP'},{code:'LEAD',label:'Lead'},{code:'PROSPECT',label:'Prospect'},{code:'ACTIVE_CLIENT',label:'Active Client'},{code:'BLACKLIST',label:'Blacklist'}]).map(c => '<option value="'+escapeHtml(c.code)+'">'+escapeHtml(c.label||c.code)+'</option>').join('');
+  if (sel && cur) sel.value = cur;
+  const f = el('crm-category-filter');
+  if (f) {
+    const fc = f.value;
+    f.innerHTML = '<option value="">All Categories</option>' + (crmCategories||[]).map(c => '<option value="'+escapeHtml(c.code)+'">'+escapeHtml(c.label||c.code)+'</option>').join('');
+    if (fc) f.value = fc;
+  }
+}
+
+async function loadCrmAgentsForSelects() {
+  if (!token()) return;
+  const data = await apiJson('api/crm/agents').catch(()=>({rows:[]}));
+  crmAgentsList = data.rows || [];
+  const opts = '<option value="">Unassigned</option>' + crmAgentsList.map(a => '<option value="'+a.id+'">'+escapeHtml((a.username||'') + ' (' + (a.sip_extension||'') + ')')+'</option>').join('');
+  ['crm-assigned-agent','crm-new-ticket-assignee','crm-transfer-agent'].forEach(id => {
+    const sel = el(id); if (!sel) return; const cur = sel.value; sel.innerHTML = (id === 'crm-transfer-agent' ? crmAgentsList.map(a => '<option value="'+a.id+'">'+escapeHtml((a.username||'') + ' (' + (a.sip_extension||'') + ')')+'</option>').join('') : opts); if (cur) sel.value = cur;
+  });
+}
+
+async function loadCrmCustomers() {
+  if (!token()) return;
+  const q = (el('crm-search') && el('crm-search').value || '').trim();
+  const qs = new URLSearchParams({ page: String(crmPage), limit: String(crmLimit), owner: crmOwnerFilter || 'all' });
+  if (q) qs.set('q', q);
+  if (crmCategoryFilter) qs.set('category', crmCategoryFilter);
+  const data = await apiJson('api/crm/customers?' + qs.toString()).catch(()=>({rows:[],total:0,page:1,limit:crmLimit}));
+  crmCustomers = data.rows || [];
+  crmTotal = data.total || 0;
+  crmPage = data.page || crmPage;
+  renderCrmCustomerList();
+}
+
+function renderCrmCustomerList() {
+  const list = el('crm-customer-list');
+  if (!list) return;
+  if (!crmCustomers.length) {
+    list.innerHTML = '<div class="list-group-item text-muted">No customers found.</div>';
+  } else {
+    list.innerHTML = crmCustomers.map(c => {
+      const active = String(c.id) === String(crmSelectedId) ? ' active' : '';
+      const cat = c.category_code || c.tag || 'Normal';
+      const owner = c.assigned_agent_name ? (' · ' + escapeHtml(c.assigned_agent_name)) : '';
+      return '<button type="button" class="list-group-item list-group-item-action crm-item'+active+'" onclick="selectCrmCustomer('+c.id+')">'
+        + '<div class="d-flex justify-content-between align-items-start gap-2"><div><div class="crm-name">'+escapeHtml(c.full_name||'')+'</div>'
+        + '<div class="small text-muted mono">'+escapeHtml(c.primary_phone||'')+'</div>'
+        + '<div class="small text-muted">'+escapeHtml(c.company||'')+owner+'</div></div>'
+        + '<span class="badge '+crmTagClass(cat)+'">'+escapeHtml(crmCategoryLabel(cat))+'</span></div></button>';
+    }).join('');
+  }
+  const info = el('crm-page-info');
+  if (info) {
+    const start = crmTotal ? ((crmPage - 1) * crmLimit + 1) : 0;
+    const end = Math.min(crmPage * crmLimit, crmTotal);
+    info.textContent = crmTotal ? (start + '-' + end + ' of ' + crmTotal) : '0 customers';
+  }
+  if (el('crm-prev')) el('crm-prev').disabled = crmPage <= 1;
+  if (el('crm-next')) el('crm-next').disabled = crmPage * crmLimit >= crmTotal;
+}
+
+function setCrmOwnerFilter(owner) {
+  crmOwnerFilter = owner || 'all';
+  if (el('crm-owner-all')) el('crm-owner-all').classList.toggle('active', crmOwnerFilter === 'all');
+  if (el('crm-owner-mine')) el('crm-owner-mine').classList.toggle('active', crmOwnerFilter === 'mine');
+  crmPage = 1; loadCrmCustomers();
+}
+
+function setCrmSubtab(tab) {
+  crmSubtab = tab === 'tickets' ? 'tickets' : 'profile';
+  if (el('crm-subtab-profile')) el('crm-subtab-profile').classList.toggle('active', crmSubtab === 'profile');
+  if (el('crm-subtab-tickets')) el('crm-subtab-tickets').classList.toggle('active', crmSubtab === 'tickets');
+  if (el('crm-profile-pane')) el('crm-profile-pane').classList.toggle('d-none', crmSubtab !== 'profile');
+  if (el('crm-customer-tickets-pane')) el('crm-customer-tickets-pane').classList.toggle('d-none', crmSubtab !== 'tickets');
+  if (el('crm-profile-bottom')) el('crm-profile-bottom').classList.toggle('d-none', crmSubtab !== 'profile');
+  if (el('crm-tickets-bottom')) el('crm-tickets-bottom').classList.toggle('d-none', crmSubtab !== 'tickets');
+  if (crmSubtab === 'tickets' && crmSelectedId) renderCrmCustomerTickets(crmCustomerTickets || []);
+}
+
+function clearCrmProfile(prefillPhone) {
+  crmSelectedId = null; crmCustomerTickets = [];
+  if (el('crm-customer-id')) el('crm-customer-id').value = '';
+  ['crm-full-name','crm-primary-phone','crm-secondary-phone','crm-company','crm-email','crm-address'].forEach(id => { if (el(id)) el(id).value = ''; });
+  if (el('crm-primary-phone') && prefillPhone) el('crm-primary-phone').value = prefillPhone;
+  if (el('crm-category')) el('crm-category').value = 'NORMAL';
+  if (el('crm-assigned-agent')) el('crm-assigned-agent').value = (authMode === 'agent' && currentAgent && currentAgent.id) ? String(currentAgent.id) : '';
+  if (el('crm-profile-title')) el('crm-profile-title').textContent = 'New Customer Profile';
+  if (el('crm-profile-msg')) el('crm-profile-msg').textContent = '';
+  if (el('crm-timeline')) el('crm-timeline').innerHTML = '<div class="list-group-item text-muted">Save/select a customer to view interactions.</div>';
+  if (el('crm-customer-tickets-list')) el('crm-customer-tickets-list').innerHTML = '<div class="text-muted small p-2">Save/select a customer to view tickets.</div>';
+  if (el('crm-ticket-detail')) el('crm-ticket-detail').innerHTML = '<div class="list-group-item text-muted">Select a ticket to view audit history.</div>';
+  if (el('crm-ticket-detail-meta')) el('crm-ticket-detail-meta').textContent = '';
+  renderCrmCustomerList();
+  if (el('crm-full-name')) { try { el('crm-full-name').focus(); } catch(e) {} }
+}
+
+function setCrmLogContext(agentExt, uniqueid) {
+  crmLogContext = { cdr_uniqueid: uniqueid || '', agent_ext: agentExt || (currentAgent && currentAgent.extension) || '' };
+  if (el('crm-log-uid')) el('crm-log-uid').textContent = crmLogContext.cdr_uniqueid || '—';
+  if (el('crm-log-agent')) el('crm-log-agent').textContent = crmLogContext.agent_ext || '—';
+}
+
+async function selectCrmCustomer(id) {
+  if (!id) return;
+  crmSelectedId = id;
+  const data = await apiJson('api/crm/customers/' + id).catch(()=>null);
+  if (!data || !data.customer) return;
+  fillCrmProfile(data.customer);
+  renderCrmTimeline(data.interactions || []);
+  crmCustomerTickets = data.tickets || [];
+  renderCrmCustomerTickets(crmCustomerTickets);
+  renderCrmCustomerList();
+}
+
+function fillCrmProfile(c) {
+  crmSelectedId = c.id;
+  if (el('crm-customer-id')) el('crm-customer-id').value = c.id || '';
+  if (el('crm-full-name')) el('crm-full-name').value = c.full_name || '';
+  if (el('crm-primary-phone')) el('crm-primary-phone').value = c.primary_phone || '';
+  if (el('crm-secondary-phone')) el('crm-secondary-phone').value = c.secondary_phone || '';
+  if (el('crm-company')) el('crm-company').value = c.company || '';
+  if (el('crm-email')) el('crm-email').value = c.email || '';
+  if (el('crm-address')) el('crm-address').value = c.address || '';
+  const cat = (c.category_code || (c.tag === 'VIP' ? 'VIP' : c.tag === 'Blacklist' ? 'BLACKLIST' : 'NORMAL')).toUpperCase();
+  if (el('crm-category')) el('crm-category').value = cat;
+  if (el('crm-assigned-agent')) el('crm-assigned-agent').value = c.assigned_agent_id ? String(c.assigned_agent_id) : '';
+  if (el('crm-profile-title')) el('crm-profile-title').textContent = 'Customer Profile — #' + c.id;
+}
+
+function renderCrmTimeline(items) {
+  const wrap = el('crm-timeline');
+  if (!wrap) return;
+  if (!items || !items.length) {
+    wrap.innerHTML = '<div class="list-group-item text-muted">No interactions yet.</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(it => {
+    const dir = String(it.direction||'').toLowerCase();
+    const badge = dir === 'outbound' ? 'bg-info text-dark' : dir === 'manual' ? 'bg-secondary' : 'bg-success';
+    return '<div class="list-group-item">'
+      + '<div class="d-flex justify-content-between align-items-start gap-2 mb-1">'
+      + '<div class="d-flex flex-wrap align-items-center gap-2"><span class="badge '+badge+'">'+escapeHtml(dir||'inbound')+'</span>'
+      + '<span class="badge bg-light text-dark border">'+escapeHtml(it.disposition_code||'—')+'</span>'
+      + '<span class="small text-muted">'+escapeHtml(it.agent_ext||'')+' '+escapeHtml(it.agent_name||'')+'</span></div>'
+      + '<span class="small text-muted mono">'+escapeHtml(crmFmtDate(it.created_at))+'</span></div>'
+      + '<div class="small">'+escapeHtml(it.notes||'')+'</div>'
+      + '<div class="small text-muted mt-1">UID: <span class="mono">'+escapeHtml(it.cdr_uniqueid||'—')+'</span>' + (it.follow_up_at ? ' · Follow-up: <span class="mono">'+escapeHtml(crmFmtDate(it.follow_up_at))+'</span>' : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function saveCrmCustomer() {
+  const id = parseInt(el('crm-customer-id') && el('crm-customer-id').value, 10);
+  const body = {
+    full_name: (el('crm-full-name') && el('crm-full-name').value || '').trim(),
+    primary_phone: (el('crm-primary-phone') && el('crm-primary-phone').value || '').trim(),
+    secondary_phone: (el('crm-secondary-phone') && el('crm-secondary-phone').value || '').trim(),
+    company: (el('crm-company') && el('crm-company').value || '').trim(),
+    email: (el('crm-email') && el('crm-email').value || '').trim(),
+    category_code: (el('crm-category') && el('crm-category').value) || 'NORMAL',
+    assigned_agent_id: (el('crm-assigned-agent') && el('crm-assigned-agent').value) || '',
+    address: (el('crm-address') && el('crm-address').value || '').trim(),
+  };
+  if (!body.full_name || !body.primary_phone) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'Full name and primary phone are required.'; return; }
+  const path = Number.isFinite(id) && id > 0 ? ('api/crm/customers/' + id) : 'api/crm/customers';
+  const method = Number.isFinite(id) && id > 0 ? 'PUT' : 'POST';
+  const data = await apiJson(path, { method, body: JSON.stringify(body) }).catch(e => ({ __err: e.message || 'Save failed' }));
+  if (data && data.__err) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = data.__err; return; }
+  const saved = data.customer || { id: data.id || id };
+  crmSelectedId = saved.id;
+  if (el('crm-customer-id')) el('crm-customer-id').value = saved.id || '';
+  if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'Saved.';
+  await loadCrmCustomers();
+  if (saved.id) await selectCrmCustomer(saved.id);
+}
+
+async function saveCrmInteraction() {
+  const customerId = parseInt(el('crm-customer-id') && el('crm-customer-id').value, 10);
+  if (!Number.isFinite(customerId) || customerId <= 0) { if (el('crm-log-msg')) el('crm-log-msg').textContent = 'Select/save a customer first.'; return; }
+  const body = {
+    customer_id: customerId,
+    agent_ext: crmLogContext.agent_ext || (currentAgent && currentAgent.extension) || '',
+    agent_name: (currentAgent && currentAgent.username) || '',
+    direction: (el('crm-log-direction') && el('crm-log-direction').value) || 'inbound',
+    disposition_code: (el('crm-log-disposition') && el('crm-log-disposition').value) || '',
+    follow_up_at: (el('crm-log-followup') && el('crm-log-followup').value) || '',
+    notes: (el('crm-log-notes') && el('crm-log-notes').value || '').trim(),
+    cdr_uniqueid: crmLogContext.cdr_uniqueid || '',
+    channel: 'call',
+  };
+  const data = await apiJson('api/crm/interactions', { method:'POST', body: JSON.stringify(body) }).catch(e => ({ __err: e.message || 'Failed' }));
+  if (data && data.__err) { if (el('crm-log-msg')) el('crm-log-msg').textContent = data.__err; return; }
+  if (el('crm-log-msg')) el('crm-log-msg').textContent = 'Interaction saved.';
+  if (el('crm-log-notes')) el('crm-log-notes').value = '';
+  if (el('crm-log-followup')) el('crm-log-followup').value = '';
+  await selectCrmCustomer(customerId);
+}
+
+// ---- tickets ----
+function dueClass(due) {
+  if (!due) return '';
+  const t = new Date(String(due).replace(' ','T')).getTime();
+  if (!isFinite(t)) return '';
+  const nowT = Date.now();
+  if (t < nowT) return 'crm-due-overdue';
+  if (t - nowT < 24*3600*1000) return 'crm-due-soon';
+  return '';
+}
+function ticketStatusOptions(cur) {
+  return ['Open','In Progress','Waiting Customer','Escalated','Closed'].map(s => '<option value="'+s+'"'+(s===cur?' selected':'')+'>'+s+'</option>').join('');
+}
+function renderCrmCustomerTickets(tickets) {
+  crmCustomerTickets = tickets || [];
+  const wrap = el('crm-customer-tickets-list');
+  if (!wrap) return;
+  if (!tickets || !tickets.length) { wrap.innerHTML = '<div class="text-muted small p-2">No tickets for this customer.</div>'; return; }
+  wrap.innerHTML = '<table class="table table-sm align-middle mb-0"><thead><tr><th>Ticket</th><th>Subject</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Due</th><th></th></tr></thead><tbody>' + tickets.map(t => {
+    const due = t.due_at ? crmFmtDate(t.due_at) : '—';
+    return '<tr class="crm-ticket-row '+dueClass(t.due_at)+'">'
+      + '<td class="mono"><a href="#" onclick="event.preventDefault();loadCrmTicketDetail('+t.id+')">'+escapeHtml(t.ticket_number||('#'+t.id))+'</a></td>'
+      + '<td>'+escapeHtml(t.subject||'')+'</td>'
+      + '<td><span class="badge bg-light text-dark border">'+escapeHtml(t.priority||'')+'</span></td>'
+      + '<td><select class="form-select form-select-sm" style="width:auto" onchange="updateCrmTicketStatus('+t.id+', this.value)">'+ticketStatusOptions(t.status||'Open')+'</select></td>'
+      + '<td>'+escapeHtml(t.assigned_agent_name||'Unassigned')+'</td>'
+      + '<td class="small">'+escapeHtml(due)+'</td>'
+      + '<td><button class="btn btn-sm btn-outline-primary" onclick="openTransferModal('+t.id+')">Transfer</button></td>'
+      + '</tr>';
+  }).join('') + '</tbody></table>';
+}
+
+async function loadCrmTicketDetail(id) {
+  const data = await apiJson('api/crm/tickets/' + id).catch(()=>null);
+  if (!data || !data.ticket) return;
+  if (el('crm-ticket-detail-meta')) el('crm-ticket-detail-meta').textContent = (data.ticket.ticket_number || ('#'+id)) + ' · ' + (data.ticket.subject || '');
+  const logs = data.logs || [];
+  if (el('crm-ticket-detail')) el('crm-ticket-detail').innerHTML = logs.length ? logs.map(l => '<div class="list-group-item crm-log-item"><div class="d-flex justify-content-between"><strong>'+escapeHtml(l.action_type||'')+'</strong><span class="small text-muted mono">'+escapeHtml(crmFmtDate(l.created_at))+'</span></div><div class="small text-muted">'+escapeHtml(l.from_agent_name||'')+' → '+escapeHtml(l.to_agent_name||'')+' · '+escapeHtml(l.old_status||'')+' → '+escapeHtml(l.new_status||'')+'</div><div class="small">'+escapeHtml(l.note||'')+'</div></div>').join('') : '<div class="list-group-item text-muted">No audit logs.</div>';
+}
+
+async function updateCrmTicketStatus(id, status) {
+  await apiJson('api/crm/tickets/' + id, { method:'PATCH', body: JSON.stringify({ status }) }).catch(()=>null);
+  if (crmSelectedId) await selectCrmCustomer(crmSelectedId);
+  if ((location.hash||'').indexOf('crm-tickets') !== -1) loadTicketsQueue();
+}
+
+async function createCrmTicket() {
+  const customerId = parseInt(el('crm-customer-id') && el('crm-customer-id').value, 10);
+  if (!Number.isFinite(customerId) || customerId <= 0) { if (el('crm-ticket-msg')) el('crm-ticket-msg').textContent = 'Select/save a customer first.'; return; }
+  const body = {
+    customer_id: customerId,
+    subject: (el('crm-new-ticket-subject') && el('crm-new-ticket-subject').value || '').trim(),
+    category: (el('crm-new-ticket-category') && el('crm-new-ticket-category').value) || 'General',
+    priority: (el('crm-new-ticket-priority') && el('crm-new-ticket-priority').value) || 'Medium',
+    assigned_agent_id: (el('crm-new-ticket-assignee') && el('crm-new-ticket-assignee').value) || '',
+    due_at: (el('crm-new-ticket-due') && el('crm-new-ticket-due').value) || '',
+    description: (el('crm-new-ticket-desc') && el('crm-new-ticket-desc').value || '').trim(),
+  };
+  if (!body.subject) { if (el('crm-ticket-msg')) el('crm-ticket-msg').textContent = 'Subject required.'; return; }
+  const data = await apiJson('api/crm/tickets', { method:'POST', body: JSON.stringify(body) }).catch(e => ({ __err: e.message || 'Failed' }));
+  if (data && data.__err) { if (el('crm-ticket-msg')) el('crm-ticket-msg').textContent = data.__err; return; }
+  if (el('crm-ticket-msg')) el('crm-ticket-msg').textContent = 'Ticket created: ' + (data.ticket_number || '');
+  ['crm-new-ticket-subject','crm-new-ticket-desc','crm-new-ticket-due'].forEach(id => { if (el(id)) el(id).value = ''; });
+  await selectCrmCustomer(customerId);
+  if ((location.hash||'').indexOf('crm-tickets') !== -1) loadTicketsQueue();
+}
+
+function openTransferModal(ticketId) {
+  if (el('crm-transfer-ticket-id')) el('crm-transfer-ticket-id').value = String(ticketId || '');
+  if (el('crm-transfer-note')) el('crm-transfer-note').value = '';
+  if (el('crm-transfer-msg')) el('crm-transfer-msg').textContent = '';
+  if (!crmAgentsList.length) loadCrmAgentsForSelects();
+  try { new bootstrap.Modal(document.getElementById('crm-transfer-modal')).show(); } catch(e) {}
+}
+
+async function confirmCrmTransfer() {
+  const ticketId = parseInt(el('crm-transfer-ticket-id') && el('crm-transfer-ticket-id').value, 10);
+  const toAgent = parseInt(el('crm-transfer-agent') && el('crm-transfer-agent').value, 10);
+  const note = (el('crm-transfer-note') && el('crm-transfer-note').value || '').trim();
+  if (!Number.isFinite(ticketId) || !Number.isFinite(toAgent)) { if (el('crm-transfer-msg')) el('crm-transfer-msg').textContent = 'Select agent.'; return; }
+  const data = await apiJson('api/crm/tickets/' + ticketId + '/transfer', { method:'POST', body: JSON.stringify({ to_agent_id: toAgent, note }) }).catch(e => ({ __err: e.message || 'Failed' }));
+  if (data && data.__err) { if (el('crm-transfer-msg')) el('crm-transfer-msg').textContent = data.__err; return; }
+  try { bootstrap.Modal.getInstance(document.getElementById('crm-transfer-modal')).hide(); } catch(e) {}
+  if (crmSelectedId) await selectCrmCustomer(crmSelectedId);
+  if ((location.hash||'').indexOf('crm-tickets') !== -1) loadTicketsQueue();
+}
+
+async function initCrmTicketsQueueView() {
+  await loadCrmAgentsForSelects();
+  await loadTicketsQueue();
+}
+
+async function loadTicketsQueue() {
+  const owner = (el('crm-q-owner') && el('crm-q-owner').value) || (authMode === 'agent' ? 'mine' : 'all');
+  const statusSel = (el('crm-q-status') && el('crm-q-status').value) || 'openish';
+  const q = (el('crm-q-search') && el('crm-q-search').value || '').trim();
+  const qs = new URLSearchParams({ owner, limit: '100' });
+  if (q) qs.set('q', q);
+  if (statusSel && statusSel !== 'openish' && statusSel !== 'all') qs.set('status', statusSel);
+  const data = await apiJson('api/crm/tickets?' + qs.toString()).catch(()=>({rows:[]}));
+  let rows = data.rows || [];
+  if (statusSel === 'openish') rows = rows.filter(t => String(t.status||'') !== 'Closed');
+  crmQueueTickets = rows;
+  renderTicketsQueue(rows);
+}
+
+function renderTicketsQueue(rows) {
+  const tbody = el('crm-q-rows');
+  if (!tbody) return;
+  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No tickets</td></tr>'; return; }
+  tbody.innerHTML = rows.map(t => {
+    const due = t.due_at ? crmFmtDate(t.due_at) : '—';
+    return '<tr class="'+dueClass(t.due_at)+'">'
+      + '<td class="mono">'+escapeHtml(t.ticket_number||('#'+t.id))+'</td>'
+      + '<td><a href="#" onclick="event.preventDefault();openTicketCustomer('+t.customer_id+','+t.id+')">'+escapeHtml(t.customer_name||'')+'</a><div class="small text-muted mono">'+escapeHtml(t.customer_phone||'')+'</div></td>'
+      + '<td>'+escapeHtml(t.subject||'')+'</td>'
+      + '<td><span class="badge bg-light text-dark border">'+escapeHtml(t.priority||'')+'</span></td>'
+      + '<td><span class="badge crm-status-badge">'+escapeHtml(t.status||'')+'</span></td>'
+      + '<td>'+escapeHtml(t.assigned_agent_name||'Unassigned')+'</td>'
+      + '<td class="small">'+escapeHtml(due)+'</td>'
+      + '<td class="text-nowrap"><button class="btn btn-sm btn-outline-primary me-1" onclick="openTransferModal('+t.id+')">Transfer</button><button class="btn btn-sm btn-outline-secondary" onclick="openTicketCustomer('+t.customer_id+','+t.id+')">Open</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+async function openTicketCustomer(customerId, ticketId) {
+  showView('crm');
+  setCrmSubtab('tickets');
+  if (customerId) await selectCrmCustomer(customerId);
+  if (ticketId) await loadCrmTicketDetail(ticketId);
+}
+
+function handleCrmTicketAssigned(msg) {
+  const t = (msg && msg.ticket) || {};
+  showCrmToast('Ticket assigned', (t.ticket_number || 'Ticket') + ' — ' + (t.subject || '') + (t.assigned_agent_name ? (' → ' + t.assigned_agent_name) : ''));
+  if ((location.hash||'').indexOf('crm-tickets') !== -1) loadTicketsQueue();
+  if (crmSelectedId && t.customer_id && String(t.customer_id) === String(crmSelectedId)) selectCrmCustomer(crmSelectedId);
+}
+let crmToastTimer = null;
+function showCrmToast(title, body) {
+  if (el('crm-toast-title')) el('crm-toast-title').textContent = title || 'Notice';
+  if (el('crm-toast-body')) el('crm-toast-body').textContent = body || '';
+  if (el('crm-toast')) el('crm-toast').classList.add('show');
+  clearTimeout(crmToastTimer);
+  crmToastTimer = setTimeout(()=>{ if (el('crm-toast')) el('crm-toast').classList.remove('show'); }, 6000);
+}
+
+async function crmClickToDial(phone) {
+  phone = String(phone || '').trim();
+  if (!phone) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'No phone number'; return; }
+  const ext = (currentAgent && currentAgent.extension) || '';
+  const data = await apiJson('api/crm/click-to-dial', { method:'POST', body: JSON.stringify({ phone, agent_ext: ext }) }).catch(e => ({ __err: e.message || 'Dial failed' }));
+  if (data && data.__err) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = data.__err; return; }
+  if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'Dialing ' + phone + '...';
+}
+
+function handleCrmScreenPop(msg) {
+  crmPendingPop = msg || null;
+  showCrmScreenPopBanner(msg || {});
+}
+
+function showCrmScreenPopBanner(msg) {
+  const banner = el('crm-screen-pop-banner');
+  if (!banner) return;
+  const customer = msg.customer || null;
+  const isNew = !!msg.is_new || !customer;
+  el('crm-pop-caller').textContent = msg.caller_id || '';
+  el('crm-pop-agent').textContent = msg.agent_ext || '';
+  if (isNew) {
+    el('crm-pop-title').textContent = 'New Caller';
+    const tag = el('crm-pop-tag'); tag.textContent = 'New Caller'; tag.className = 'badge crm-badge-normal';
+  } else {
+    el('crm-pop-title').textContent = customer.full_name || 'Known Customer';
+    const cat = customer.tag || 'Normal';
+    const tag = el('crm-pop-tag'); tag.textContent = cat; tag.className = 'badge ' + crmTagClass(cat);
+  }
+  const last = msg.last_interaction;
+  if (last) {
+    const snippet = String(last.notes || '').slice(0, 80);
+    el('crm-pop-last').textContent = (last.disposition_code ? ('Last: ' + last.disposition_code + ' — ') : 'Last interaction: ') + (snippet || '(no notes)');
+  } else {
+    el('crm-pop-last').textContent = isNew ? 'No previous customer record.' : 'No previous interaction.';
+  }
+  banner.classList.remove('d-none');
+  requestAnimationFrame(function(){ banner.classList.add('show'); });
+}
+
+function hideCrmScreenPopBanner() {
+  const banner = el('crm-screen-pop-banner');
+  if (!banner) return;
+  banner.classList.remove('show');
+  setTimeout(function(){ banner.classList.add('d-none'); }, 250);
+}
+
+async function openCrmFromPop(msg) {
+  msg = msg || crmPendingPop || {};
+  crmPendingPop = null;
+  hideCrmScreenPopBanner();
+  await Promise.all([loadCrmDispositions(), loadCrmCategories(), loadCrmAgentsForSelects()]);
+  setCrmLogContext(msg.agent_ext || (currentAgent && currentAgent.extension) || '', msg.uniqueid || '');
+  if (msg.customer && msg.customer.id) {
+    await selectCrmCustomer(msg.customer.id);
+  } else {
+    clearCrmProfile(msg.caller_id || '');
+    if (el('crm-log-direction')) el('crm-log-direction').value = 'inbound';
+  }
+}
+
+async function simulateCrmPop() {
+  const phone = (el('crm-primary-phone') && el('crm-primary-phone').value || '').trim();
+  if (!phone) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'Enter a primary phone to simulate.'; return; }
+  const data = await apiJson('api/crm/simulate-screen-pop', { method:'POST', body: JSON.stringify({ caller_id: phone, agent_ext: (currentAgent&&currentAgent.extension)||'sim', uniqueid: 'sim-' + Date.now() }) }).catch(e => ({ __err: e.message || 'Simulation failed' }));
+  if (data && data.__err) { if (el('crm-profile-msg')) el('crm-profile-msg').textContent = data.__err; return; }
+  if (el('crm-profile-msg')) el('crm-profile-msg').textContent = 'Simulated screen pop sent.';
+}
+
+function copyCrmPhone() {
+  const val = (el('crm-primary-phone') && el('crm-primary-phone').value || '').trim();
+  const status = el('crm-copy-status');
+  if (!val) { if (status) { status.textContent = 'No number'; status.classList.add('show'); setTimeout(()=>{status.classList.remove('show'); status.textContent='Copied!';}, 1200); } return; }
+  function showCopied(msg) { if (!status) return; status.textContent = msg || 'Copied!'; status.classList.add('show'); setTimeout(()=>{ status.classList.remove('show'); status.textContent='Copied!'; }, 1200); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(function(){ showCopied('Copied!'); }).catch(function(){
+      const ta = document.createElement('textarea'); ta.value = val; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); showCopied('Copied!'); } catch(e){ showCopied('Failed'); } ta.remove();
+    });
+  } else {
+    const ta = document.createElement('textarea'); ta.value = val; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); showCopied('Copied!'); } catch(e){ showCopied('Failed'); } ta.remove();
+  }
+}
+
+function initAuthUiHandlers(){}
+
+function initCrmUiHandlers() {
+  if (window.__crmUiInit) return;
+  window.__crmUiInit = true;
+  if (el('crm-search')) el('crm-search').addEventListener('input', debounceCrmSearch);
+  if (el('crm-new-btn')) el('crm-new-btn').addEventListener('click', function(){ setCrmLogContext((currentAgent&&currentAgent.extension)||'', ''); clearCrmProfile(''); setCrmSubtab('profile'); });
+  if (el('crm-copy-phone')) el('crm-copy-phone').addEventListener('click', copyCrmPhone);
+  if (el('crm-call-primary')) el('crm-call-primary').addEventListener('click', function(){ crmClickToDial(el('crm-primary-phone') && el('crm-primary-phone').value); });
+  if (el('crm-call-secondary')) el('crm-call-secondary').addEventListener('click', function(){ crmClickToDial(el('crm-secondary-phone') && el('crm-secondary-phone').value); });
+  if (el('crm-prev')) el('crm-prev').addEventListener('click', function(){ if (crmPage > 1) { crmPage--; loadCrmCustomers(); } });
+  if (el('crm-next')) el('crm-next').addEventListener('click', function(){ if (crmPage * crmLimit < crmTotal) { crmPage++; loadCrmCustomers(); } });
+  if (el('crm-save-customer-btn')) el('crm-save-customer-btn').addEventListener('click', saveCrmCustomer);
+  if (el('crm-save-interaction-btn')) el('crm-save-interaction-btn').addEventListener('click', saveCrmInteraction);
+  if (el('crm-simulate-btn')) el('crm-simulate-btn').addEventListener('click', simulateCrmPop);
+  if (el('crm-pop-open')) el('crm-pop-open').addEventListener('click', function(){ showView('crm'); openCrmFromPop(crmPendingPop || {}); });
+  if (el('crm-pop-dismiss')) el('crm-pop-dismiss').addEventListener('click', hideCrmScreenPopBanner);
+  if (el('crm-owner-all')) el('crm-owner-all').addEventListener('click', function(){ setCrmOwnerFilter('all'); });
+  if (el('crm-owner-mine')) el('crm-owner-mine').addEventListener('click', function(){ setCrmOwnerFilter('mine'); });
+  if (el('crm-category-filter')) el('crm-category-filter').addEventListener('change', function(){ crmCategoryFilter = el('crm-category-filter').value || ''; crmPage = 1; loadCrmCustomers(); });
+  if (el('crm-create-ticket-btn')) el('crm-create-ticket-btn').addEventListener('click', createCrmTicket);
+  if (el('crm-transfer-confirm')) el('crm-transfer-confirm').addEventListener('click', confirmCrmTransfer);
+  if (el('crm-toast-close')) el('crm-toast-close').addEventListener('click', function(){ if (el('crm-toast')) el('crm-toast').classList.remove('show'); });
+  if (el('crm-q-refresh')) el('crm-q-refresh').addEventListener('click', loadTicketsQueue);
+  if (el('crm-q-owner')) el('crm-q-owner').addEventListener('change', loadTicketsQueue);
+  if (el('crm-q-status')) el('crm-q-status').addEventListener('change', loadTicketsQueue);
+  if (el('crm-q-search')) el('crm-q-search').addEventListener('input', function(){ clearTimeout(window.__crmQTimer); window.__crmQTimer = setTimeout(loadTicketsQueue, 300); });
+}
+
+el('agent-save').addEventListener('click', saveAgent);
+el('reason-save').addEventListener('click', saveReason);
+</script>
+
+</body>
+</html>

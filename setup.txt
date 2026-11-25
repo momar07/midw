@@ -1,0 +1,15 @@
+Good news — the full-setup script already exists from the last step: middleware/installer/bootstrap.sh (261 lines, syntax-checked, key pieces tested against your live box). Nothing needs to be written.
+What it contains (all idempotent):
+1. Node.js portable install → /opt/node
+2. Middleware copy → /opt/middleware
+3. Database: cc_agents, cc_agent_queues, cc_pause_reasons, cc_agent_logs tables + cc_middleware user with full grants + seeds Break/Pray/AdminBreak
+4. AMI user cc_middleware in manager_custom.conf + Asterisk reload
+5. Fresh .env with generated TOKEN_SECRET/ADMIN_TOKEN
+6. systemd service cc-middleware, enabled and started
+7. Apache proxy https://<box>/cc/
+8. Runs issabel-cc-dashboard.sh (sidebar, ACL, 4 modules, loading-logo patch)
+Usage (the 3 commands I gave you):
+tar czf middleware.tgz -C /home/momar/apps middleware --exclude=.env
+scp middleware.tgz root@<new-issabel>:/tmp/
+ssh root@<new-issabel> 'cd /tmp && tar xzf middleware.tgz && bash /tmp/middleware/installer/bootstrap.sh'
+It prints the admin token at the end. Options: --sip-ip, --db-pass, --ami-secret, --db-root-pass.

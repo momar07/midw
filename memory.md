@@ -1,0 +1,41 @@
+# Middleware Memory
+
+## Overview
+- Issabel call-center middleware + supervisor SPA in `/home/momar/apps/middleware` (deploy: `/opt/middleware` on `192.168.2.22`, service: `cc-middleware`).
+- SPA served by middleware (`public/index.html`, proxied via Issabel `/cc/`); Issabel modules (`cc_monitor`, `cc_agents_mgr`, `cc_pauses`, `cc_reports`) embed iframe to `/cc/?token=<ADMIN_TOKEN>#<view>`.
+
+## Environment / Ops
+- Remote: `root@192.168.2.22` (Issabel). Restart: `systemctl restart cc-middleware`. Health: `curl -s http://127.0.0.1:8080/health` (`{"ok":true,"database":"up",...}`).
+- DB: MySQL `asterisk` local, app user `cc_middleware` (see `.env`). CDR in `asteriskcdrdb.cdr` (SELECT granted). Daily stats/requeue tables: `cc_daily_kpis`, `cc_daily_agent_stats`, `queue_requeue_logs`.
+- AMI: Asterisk 20, `cc_middleware@127.0.0.1:5038` with `read = agent,call`, `write = agent,call` (`/etc/asterisk/manager_custom.conf`, `manager reload`). `Subscribe` unsupported; events consumed from session + `QueueStatus` poll/reconciliation.
+- Admin auth: `Authorization: Bearer <ADMIN_TOKEN>` for `/api/admin/*` and `/api/requeue-logs`.
+
+## Key Components
+- `server.js`: HTTP/WS server, AMI event handling, live agent/queue/KPI state & broadcasts, admin/report endpoints, daily persistence/midnight rollover logic.
+- `db.js`: DB helpers (agents/pauses/logs/reports, requeue logs, daily KPI/agent stats, report queries incl. queue_log file parsing and outbound from CDR).
+- `ami.js`: AMI client/event emission.
+- `public/index.html`: supervisor SPA (Live Monitor, Agents, Pause Reasons, Reports).
+
+## Recent Work (2026-11)
+- Fixed syntax/brace break in `server.js` event/member handling; restored healthy deploy.
+- Silenced non-fatal `CREATE` privilege warnings for `ensureRequeueTable`/daily stats init paths when tables already exist.
+- Reports redesign: removed top KPI cards; added categorized tabs (Agents/Queues/Calls) with sub-reports (Agent Log, Agent Performance & Abuse, Requeue & Abuse Log, Queue Summary & SLA, Hourly Traffic, Queue Calls Detail, Outbound Calls), dynamic filters, scroll/sticky table, entries+pagination footer, CSV (BOM)/Excel export of all filtered rows.
+- Backend report endpoints added: `/api/admin/reports/{filters,agent_performance,requeue_abuse,queue_summary_sla,hourly_traffic,queue_calls_detail,outbound_calls}`. Queue metrics derived from `/var/log/asterisk/queue_log`; outbound from `asteriskcdrdb.cdr`.
+- SPA fixes: initial `#reports` boot/token resolution + immediate dropdown/dates/fetch, restored `fillReportAgents()`, added missing `todayStr`/`fmtDuration`/`eventBadge` and `reportPage`/`reportTotal` declarations, improved connection/status handling and runtime error surfacing.
+- Agent Log cleanup (2026-11-15): `db.agentLogs` and `/api/admin/reports/agent_logs` now return only `login`/`pause` rows (filters limited to those) while still pairing `unpause`/`logout` to compute `End Time`/`Duration`. UI adds `Duration (s)` (raw integer seconds, `-` when open) next to formatted `Duration`, included in CSV/Excel exports. Deployed to `/opt/middleware` (`db.js`, `server.js`, `public/index.html`) and `cc-middleware` restarted.
+
+- Custom Report Builder (2026-11-15): `cc_custom_reports` table (safe CREATE) + CRUD/list/preview/run admin endpoints in `db.js`/`server.js` with strict SELECT-only guardrails, forbidden keyword block, no multi-statements/unknown params, named param binding (`:from_date,:to_date,:agent_ext,:queue_name,:reason`), preview LIMIT 15, run capped 5000. SPA adds `#report-builder` (form/category/filter checkboxes, SQL editor w/param chips+edit toggle, preview/save/clear, saved reports table w/active/edit/delete) and merges active custom reports into `#reports` dropdown per category with dynamic filters, dynamic columns, and existing pagination/CSV/Excel export. Issabel module cloned to `/var/www/html/modules/cc_report_builder/` (iframe `/cc/?token=...#report-builder`, same proxy/token flow) and registered in `menu.db`/`acl.db` under Call Center (`cc_parent`, order 18, admin perms). Deployed to `/opt/middleware` + restarted `cc-middleware`; API preview rejects non-SELECT, preview/run work; table granted to `cc_middleware@localhost`.
+- 2026-11-15 fix: `#view-report-builder` had been nested inside `#view-reports` (so stayed hidden); moved to top-level sibling `.view`. `showView()` now toggles `.active` and explicit `display:block/none` for all views and routes `#report-builder` to `initReportBuilderView()` + `loadCustomReportsList()` (aliases to init/load admin list). Redeployed `public/index.html`.
+- 2026-11-15 layout: `#report-builder`/`.main-wrap` scrollable (`overflow-y:auto; max-height:calc(100vh - 56px)`; builder `padding-bottom:28px`), compact SQL textarea (`rows=4`, `min-height:110px; max-height:180px; resize:vertical`), saved reports wrapped in `.rb-saved-scroll` (`max-height:260px; overflow-y:auto`) with sticky thead. Redeployed `public/index.html`.
+- 2026-11-15 custom report params: backend normalizes agent/queue/reason `''|'all'` (case-insensitive) to `''` and defaults preview `:from_date/:to_date` to today; seeded `Test Agent Events` query updated to `(:agent_ext IN ('','all') OR ...)`. Live Preview header adds compact From/To/Agent/Queue/Reason inputs (shown per enabled filters) used by Test/Preview. Redeployed `server.js`,`public/index.html`, restarted `cc-middleware`.
+- 2026-11-15 layout: `#report-builder` top grid `align-items-stretch`, columns `d-flex`, cards `h-100 w-100` (preview `d-flex flex-column`) with preview body/scroll `flex:1;max-height:360px;overflow:auto;min-height:0` for equal card heights. Redeployed `public/index.html`.
+- 2026-11-15 layout: top builder wrapper set to CSS grid `grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;width:100%;align-items:stretch`; cards `width:100%;box-sizing:border-box;height:100%`, preview card `position:relative` with flex body/scroll `flex:1 1 0;min-height:0;overflow:auto` so left content dictates exact equal height/50-50 split. Redeployed `public/index.html`.
+- 2026-11-15 UX: unified searchable agent combobox (`initSearchableAgentSelect/syncAgentCombo`) for Reports and Report Builder Live Preview (type filters by username/extension, All agents='' or binds sip_extension/report-agent id, clear/escape/outside-close). Builder top cards compacted (`#rb-sql` 85–125px, card-body 12px 14px), Saved Custom Reports scroll `max-height:360px` with live search input (title/category/filters). Redeployed `public/index.html`.
+- 2026-11-15 split-pane: `#view-report-builder` vertical flex (`height:calc(100vh - 56px);min-height:520px;overflow:hidden`) with `#rb-top-pane` (50/50 grid intact, cards stretch, SQL/preview flex), `#rb-h-splitter` (10px grip, row-resize, hover/active, mouse+touch drag clamped 220px / container-170px, dblclick reset 56%, persists `cc_rb_split_ratio`), `#rb-bottom-pane` (flex 1, saved reports card/body/scroll flex with sticky thead/search). `initRbSplitter()` on view init. Redeployed `public/index.html`.
+- 2026-11-15 saved reports pagination: bottom card footer (Entries 10/25/50/100, `Showing X to Y of Z entries · page P of N`, Previous/Next) with client-side state (`rbAllReports`,`rbSavedPage`,`rbSavedPageSize`), filter-then-slice paging integrated with `#rb-saved-search` (resets page on search/size change), clamps page after reload/toggle/delete, sticky thead/splitter intact. Redeployed `public/index.html`.
+- 2026-11-15 custom report SQL: validator accepts read-only `SELECT|WITH` (leading comments stripped, WITH must contain SELECT, same forbidden/single-stmt checks). SELECT wrapped as `SELECT * FROM (...) LIMIT ?`; `WITH`/CTE executed directly and capped in Node (MariaDB 10.3-safe fallback). Deployed `server.js`, `cc-middleware` restarted; `WITH ... SELECT` verified on preview and run.
+
+## Notes / Pending Verification
+- Live Monitor/AMI-driven KPIs, requeue TIMEOUT/DECLINED logging, abuse counters/popovers, persistence across restart, and midnight rollover need ongoing real-traffic validation.
+- If SPA appears stale or shows old errors in browser, hard-refresh cached iframe/page (`/cc/?token=...#reports` or `#report-builder`).
+- `PLAN-decline-logging.md`, `PLAN-ext-queues-menu.md`, `livemonitor.md`, `queuemonitor.md` contain deferred/historical plans—verify against current code before implementing.

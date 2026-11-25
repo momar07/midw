@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Monitor Preview</title>
+<link rel="stylesheet" href="vendor/bootstrap.min.css">
+<style>
+  body { background:#f1f3f4; color:#333; }
+  .topbar { background:#5e3a87; color:#fff; padding:.6rem 1rem; }
+  .kpi-card { color:#fff; border:0; border-radius:8px; min-height:96px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .kpi-card .card-body { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; }
+  .kpi-icon { font-size:28px; opacity:.95; width:40px; text-align:center; }
+  .kpi-label { font-size:.9rem; opacity:.95; }
+  .kpi-value { font-size:2rem; font-weight:700; line-height:1; }
+  .bg-waiting { background:#f39c12; }
+  .bg-active { background:#e74c3c; }
+  .bg-completed { background:#2ecc71; }
+  .bg-abandoned { background:#c9a227; }
+  .bg-logged { background:#27ae60; }
+  .bg-paused { background:#8e44ad; }
+  .bg-total { background:#3498db; }
+  .bg-avgqsa { background:#7d3c98; }
+  .bg-avgqtt { background:#2980b9; }
+  .panel { background:#fff; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .nav-tabs .nav-link { color:#5e3a87; font-weight:600; }
+  .nav-tabs .nav-link.active { color:#5e3a87; border-top:3px solid #5e3a87; }
+  .badge-ready { background:#27ae60; }
+  .badge-task { background:#d35400; }
+  .badge-pause { background:#f39c12; color:#222; }
+  .badge-talking { background:#c0392b; }
+  .pill { display:inline-block; padding:.2rem .45rem; border-radius:4px; color:#fff; font-size:.78rem; font-weight:600; margin-right:.25rem; }
+  .pill-blue { background:#3498db; }
+  .pill-red { background:#e74c3c; }
+  .cell-waiting { background:#fff3cd; font-weight:600; }
+  .cell-completed { background:#d4edda; font-weight:600; }
+  .cell-abandoned { background:#f8d7da; font-weight:600; }
+  .cell-sla { background:#d6eaf8; font-weight:600; }
+  .mono { font-family: Consolas, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .gauge-wrap { text-align:center; }
+  .gauge { width:110px; height:110px; position:relative; margin:0 auto .35rem; }
+  .gauge svg { transform:rotate(-90deg); }
+  .gauge .center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; }
+  .gauge .pct { font-weight:700; font-size:1.05rem; }
+  .gauge .sub { font-size:.75rem; color:#666; }
+  .filter-bar .form-label { font-size:.8rem; margin-bottom:.2rem; color:#666; }
+  .table thead th { white-space:nowrap; font-size:.85rem; color:#555; }
+  .table td { vertical-align:middle; font-size:.9rem; }
+  .small-muted { font-size:.8rem; color:#777; }
+</style>
+</head>
+<body>
+  <div class="topbar d-flex justify-content-between align-items-center">
+    <div><strong>Call Center Supervisor Dashboard</strong> <span class="ms-2 small-muted text-white-50">Live Monitor Preview (mock data)</span></div>
+    <div class="small">Updated: <span id="updated" class="mono"></span></div>
+  </div>
+
+  <div class="container-fluid py-3">
+    <!-- KPI Cards -->
+    <div class="row g-2 mb-2">
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card kpi-card bg-waiting"><div class="card-body"><div><div class="kpi-icon">🕒</div><div class="kpi-label">Waiting QC</div></div><div class="kpi-value" id="kpi-waiting">4</div></div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card kpi-card bg-active"><div class="card-body"><div><div class="kpi-icon">📞</div><div class="kpi-label">Active QC</div></div><div class="kpi-value" id="kpi-active">6</div></div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card kpi-card bg-completed"><div class="card-body"><div><div class="kpi-icon">😊</div><div class="kpi-label">Completed QC</div></div><div class="kpi-value" id="kpi-completed">128</div></div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card kpi-card bg-abandoned"><div class="card-body"><div><div class="kpi-icon">☹</div><div class="kpi-label">Abandoned QC</div></div><div class="kpi-value" id="kpi-abandoned">9</div></div></div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card kpi-card bg-total"><div class="card-body"><div><div class="kpi-icon">🎯</div><div class="kpi-label">Total QC</div></div><div class="kpi-value" id="kpi-total">143</div></div></div>
+      </div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi-card bg-logged"><div class="card-body"><div><div class="kpi-icon">👥</div><div class="kpi-label">Agents Logged</div></div><div class="kpi-value" id="kpi-logged">8</div></div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi-card bg-paused"><div class="card-body"><div><div class="kpi-icon">☕</div><div class="kpi-label">Agents Paused</div></div><div class="kpi-value" id="kpi-paused">2</div></div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi-card bg-avgqsa"><div class="card-body"><div><div class="kpi-icon">⏱</div><div class="kpi-label">AVG QSA</div></div><div class="kpi-value" style="font-size:1.6rem" id="kpi-qsa">5.6 s</div></div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi-card bg-avgqtt"><div class="card-body"><div><div class="kpi-icon">🚩</div><div class="kpi-label">AVG QTT</div></div><div class="kpi-value" style="font-size:1.6rem" id="kpi-qtt">97.7 s</div></div></div>
+      </div>
+    </div>
+
+    <!-- SLA Gauges -->
+    <div class="panel p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">Global Service Level</h6>
+        <span class="small-muted">Preview values</span>
+      </div>
+      <div class="row g-3">
+        <div class="col-6 col-md-3 gauge-wrap">
+          <div class="gauge" data-pct="90" data-label="SL 90%" data-th="10s"></div>
+          <div class="fw-semibold">SL 90% <span class="text-muted">[10s]</span></div>
+        </div>
+        <div class="col-6 col-md-3 gauge-wrap">
+          <div class="gauge" data-pct="80" data-label="SL 80%" data-th="20s"></div>
+          <div class="fw-semibold">SL 80% <span class="text-muted">[20s]</span></div>
+        </div>
+        <div class="col-6 col-md-3 gauge-wrap">
+          <div class="gauge" data-pct="70" data-label="SL 70%" data-th="30s"></div>
+          <div class="fw-semibold">SL 70% <span class="text-muted">[30s]</span></div>
+        </div>
+        <div class="col-6 col-md-3 gauge-wrap">
+          <div class="gauge" data-pct="72" data-label="SL 70%+" data-th="30+s"></div>
+          <div class="fw-semibold">SL 70%+ <span class="text-muted">[30+s]</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="panel">
+      <ul class="nav nav-tabs px-3 pt-2" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#agents-tab" type="button">Agents</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#queues-tab" type="button">Queues</button></li>
+      </ul>
+      <div class="tab-content p-3">
+        <!-- Agents -->
+        <div class="tab-pane fade show active" id="agents-tab">
+          <div class="row g-2 align-items-end filter-bar mb-3">
+            <div class="col-auto">
+              <label class="form-label">Entries</label>
+              <select id="a-entries" class="form-select form-select-sm" style="width:90px">
+                <option selected>10</option><option>25</option><option>50</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <label class="form-label">Search Status</label>
+              <select id="a-status" class="form-select form-select-sm" style="width:150px">
+                <option value="">Select</option>
+                <option>READY</option><option>PAUSE</option><option>TASK</option><option>TALKING</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Search Agent</label>
+              <input id="a-search" class="form-control form-control-sm" placeholder="Search agent...">
+            </div>
+            <div class="col-auto ms-auto d-flex gap-2">
+              <button class="btn btn-sm text-white" style="background:#3498db" id="pause-all">Pause ALL ▾</button>
+              <button class="btn btn-sm text-white" style="background:#8e44ad" id="resume-all">Resume ALL</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th><th>Status</th><th>Queue</th><th>Time</th><th>Calls</th><th>Info</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="agents-body"></tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2 small-muted">
+            <span id="a-count"></span><span>Page 1</span>
+          </div>
+        </div>
+
+        <!-- Queues -->
+        <div class="tab-pane fade" id="queues-tab">
+          <div class="row g-2 align-items-end filter-bar mb-3">
+            <div class="col-auto">
+              <label class="form-label">Entries</label>
+              <select id="q-entries" class="form-select form-select-sm" style="width:90px">
+                <option selected>10</option><option>25</option><option>50</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Search</label>
+              <input id="q-search" class="form-control form-control-sm" placeholder="Search queue...">
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Queue</th><th>Waiting</th><th>In Call</th><th>C</th><th>A</th><th>T</th><th>SLA</th>
+                </tr>
+              </thead>
+              <tbody id="queues-body"></tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2 small-muted">
+            <span id="q-count"></span><span>Page 1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="vendor/bootstrap.bundle.min.js"></script>
+<script>
+const now = Date.now();
+const agents = [
+  {name:'a.salem', status:'READY', queue:'--', since: now-28000, caller:null, taken:14, made:2, queues:2, pauses:1},
+  {name:'hady', status:'TASK', queue:'cosmo', since: now-(9*60+27)*1000, caller:null, taken:21, made:3, queues:3, pauses:2},
+  {name:'maha', status:'PAUSE', queue:'pharma', since: now-(4*60+29)*1000, caller:null, taken:18, made:1, queues:2, pauses:4},
+  {name:'m.ali', status:'TALKING', queue:'shakwa', since: now-(2*60+11)*1000, caller:'01201405307', taken:9, made:0, queues:1, pauses:0},
+  {name:'sara', status:'READY', queue:'--', since: now-12000, caller:null, taken:7, made:1, queues:2, pauses:1},
+  {name:'omar', status:'TALKING', queue:'sim', since: now-45000, caller:'01099887766', taken:16, made:2, queues:3, pauses:1},
+  {name:'nour', status:'PAUSE', queue:'cosmo', since: now-(1*60+5)*1000, caller:null, taken:11, made:0, queues:1, pauses:3},
+  {name:'karim', status:'READY', queue:'--', since: now-64000, caller:null, taken:20, made:4, queues:2, pauses:2},
+];
+const queues = [
+  {queue:'cosmo', waiting:2, inCall:2, c:54, a:3, t:1, sla:'92.0% in 10s'},
+  {queue:'pharma', waiting:1, inCall:1, c:31, a:2, t:0, sla:'84.0% in 20s'},
+  {queue:'shakwa', waiting:1, inCall:2, c:27, a:3, t:2, sla:'70.0% in 30s'},
+  {queue:'sim', waiting:0, inCall:1, c:16, a:1, t:0, sla:'0.0% in 0s'},
+];
+
+function fmt(ms){
+  const s=Math.max(0,Math.floor(ms/1000));
+  const h=String(Math.floor(s/3600)).padStart(2,'0');
+  const m=String(Math.floor((s%3600)/60)).padStart(2,'0');
+  const sec=String(s%60).padStart(2,'0');
+  return `${h}:${m}:${sec}`;
+}
+function statusBadge(a){
+  const t = fmt(Date.now()-a.since);
+  if(a.status==='READY') return `<span class="badge badge-ready">READY</span>`;
+  if(a.status==='TASK') return `<span class="badge badge-task">TASK ${t}</span>`;
+  if(a.status==='PAUSE') return `<span class="badge badge-pause">PAUSE ${t}</span>`;
+  if(a.status==='TALKING') return `<span class="badge badge-talking">TALKING (${a.caller||'-'})</span>`;
+  return `<span class="badge text-bg-secondary">${a.status}</span>`;
+}
+function renderAgents(){
+  const q=(document.getElementById('a-search').value||'').toLowerCase();
+  const st=document.getElementById('a-status').value;
+  const lim=parseInt(document.getElementById('a-entries').value,10)||10;
+  let rows=agents.filter(a=>(!st||a.status===st) && (!q||a.name.toLowerCase().includes(q)));
+  const total=rows.length; rows=rows.slice(0,lim);
+  document.getElementById('agents-body').innerHTML = rows.map(a=>`
+    <tr>
+      <td><strong>${a.name}</strong></td>
+      <td>${statusBadge(a)}</td>
+      <td>${a.queue}</td>
+      <td class="mono">${fmt(Date.now()-a.since)}</td>
+      <td><span class="pill pill-blue">#Taken: ${a.taken}</span><span class="pill pill-red">#Made: ${a.made}</span></td>
+      <td><span class="pill pill-blue">#Queue: ${a.queues}</span><span class="pill pill-red">#Pause: ${a.pauses}</span></td>
+      <td>
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" onclick="return false">Pause Agent</a></li>
+            <li><a class="dropdown-item" href="#" onclick="return false">Resume Agent</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#" onclick="return false">Force Logout</a></li>
+          </ul>
+        </div>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="7" class="text-center text-muted py-4">No agents</td></tr>`;
+  document.getElementById('a-count').textContent = `Showing ${rows.length} of ${total} agents`;
+}
+function renderQueues(){
+  const q=(document.getElementById('q-search').value||'').toLowerCase();
+  const lim=parseInt(document.getElementById('q-entries').value,10)||10;
+  let rows=queues.filter(x=>!q||x.queue.toLowerCase().includes(q));
+  const total=rows.length; rows=rows.slice(0,lim);
+  document.getElementById('queues-body').innerHTML = rows.map(x=>`
+    <tr>
+      <td><strong>${x.queue}</strong></td>
+      <td class="cell-waiting">${x.waiting}</td>
+      <td>${x.inCall}</td>
+      <td class="cell-completed">${x.c}</td>
+      <td class="cell-abandoned">${x.a}</td>
+      <td>${x.t}</td>
+      <td class="cell-sla">${x.sla}</td>
+    </tr>`).join('') || `<tr><td colspan="7" class="text-center text-muted py-4">No queues</td></tr>`;
+  document.getElementById('q-count').textContent = `Showing ${rows.length} of ${total} queues`;
+}
+function renderGauges(){
+  document.querySelectorAll('.gauge').forEach(el=>{
+    const pct = +el.dataset.pct||0;
+    const r=44, c=2*Math.PI*r, off=c*(1-pct/100);
+    const color = pct>=90?'#2ecc71':pct>=80?'#27ae60':pct>=70?'#f39c12':'#e74c3c';
+    el.innerHTML = `
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <circle cx="55" cy="55" r="${r}" stroke="#e9ecef" stroke-width="10" fill="none"></circle>
+        <circle cx="55" cy="55" r="${r}" stroke="${color}" stroke-width="10" fill="none" stroke-linecap="round"
+          stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
+      </svg>
+      <div class="center"><div class="pct">${pct}%</div><div class="sub">${el.dataset.th||''}</div></div>`;
+  });
+}
+function tick(){
+  renderAgents();
+  document.getElementById('updated').textContent = new Date().toLocaleTimeString();
+}
+['a-search','a-status','a-entries'].forEach(id=>document.getElementById(id).addEventListener('input',renderAgents));
+['q-search','q-entries'].forEach(id=>document.getElementById(id).addEventListener('input',renderQueues));
+document.getElementById('pause-all').addEventListener('click',()=>alert('Preview: Pause ALL action'));
+document.getElementById('resume-all').addEventListener('click',()=>alert('Preview: Resume ALL action'));
+renderGauges(); renderQueues(); tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>
