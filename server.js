@@ -1932,6 +1932,44 @@ async function handleWhatsAppReply(entry, msg) {
     return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'send failed');
 }
 
+// The phonebar chat window (v5.24): the agent opened a conversation in
+// the separate WhatsApp window. The thread (recent history, media
+// inlined by the service, the line/team identity) comes back over the
+// same socket; opening it marks the ticket read on the service side,
+// under the module's own ownership rules — same trust shape as the
+// quick reply: identity from this session, never from the payload.
+async function handleWhatsAppThread(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const answer = (ok, thread, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_thread_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, thread: thread || null, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId)) return answer(false, null, 'invalid ticket');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/thread', Object.assign({}, identity, { ticket_id: ticketId }), 30000);
+    if (r.ok && r.json && r.json.ok) return answer(true, r.json.thread || null, null);
+    return answer(false, null, (r.json && (r.json.message || r.json.error)) || r.error || 'thread failed');
+}
+
+// The chat window's status actions (Open / Waiting / Closed): the
+// service applies the web UI's exact status rules and audits the
+// change; here we only forward and relay the outcome.
+async function handleWhatsAppStatus(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const status = String(msg.status || '');
+    const answer = (ok, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_status_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, status, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId) || !status) return answer(false, 'invalid status change');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/status', Object.assign({}, identity, { ticket_id: ticketId, status }), 15000);
+    if (r.ok && r.json && r.json.ok) return answer(true, null);
+    return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'status failed');
+}
+
 // Internal: create a CRM ticket from the WhatsApp module (escalation
 // from inside a chat). Same trust as /internal/whatsapp/events — the
 // middleware ADMIN_TOKEN, server-to-server only. The customer is found
@@ -2209,6 +2247,18 @@ wss.on('connection', (ws, req, payload) => {
             // phonebar Phase 2 quick reply; the agent identity comes
             // from this session, never from the payload
             handleWhatsAppReply(entry, msg).catch((e) => console.error('whatsapp bridge: reply failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_thread') {
+            // chat window thread fetch (v5.24); identity from this
+            // session, never from the payload
+            handleWhatsAppThread(entry, msg).catch((e) => console.error('whatsapp bridge: thread failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_status') {
+            // chat window status action (v5.24); identity from this
+            // session, never from the payload
+            handleWhatsAppStatus(entry, msg).catch((e) => console.error('whatsapp bridge: status failed: ' + e.message));
             return;
         }
         if (msg.event !== 'status_change') {
