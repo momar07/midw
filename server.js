@@ -2039,6 +2039,10 @@ async function waSyncAgentFor(issabelUserId, username, voiceQueues, chat) {
         username: username || undefined,
         chat_enabled: !!(chat && chat.enabled),
         is_supervisor: !!(chat && chat.supervisor),
+        // v5.35: the declared type — any voice queues at all makes
+        // the phonebar govern his chat presence; none makes the web
+        // module govern it (chat-only agent).
+        has_voice: voice.length > 0,
         queues: queues,
     }, 15000);
     if (!r.ok) return { ok: false, error: r.error || ('the WhatsApp service answered ' + r.status) };
@@ -2086,13 +2090,15 @@ async function pushWhatsAppPresence(session, force) {
     // truthy but means NO call. Only real call states count — the
     // same reading agentDisplayStatus uses.
     const inCall = !!session.callState && session.callState !== 'ready-device';
-    const sig = voiceStatus + '|' + (inCall ? 1 : 0);
+    // Split pause (v5.35): chat pause is independent of voice pause.
+    const chatPaused = !!session.chatPaused;
+    const sig = voiceStatus + '|' + (inCall ? 1 : 0) + '|' + (chatPaused ? 1 : 0);
     if (!force && waPresenceSent.get(session.agentId) === sig) return;
     waPresenceSent.set(session.agentId, sig);
     try {
         const identity = await waIdentityFor(session);
         await waInternalPost('/internal/presence', {
-            username: identity.issabel_username, voice_status: voiceStatus, in_call: inCall,
+            username: identity.issabel_username, voice_status: voiceStatus, in_call: inCall, chat_paused: chatPaused,
         }, 10000);
     } catch (e) { /* the next change or heartbeat retries */ }
 }
@@ -2516,6 +2522,7 @@ wss.on('connection', (ws, req, payload) => {
           callSince: 0,
           activeQueue: '',
           activeCallUid: '',
+          chatPaused: false,
       };
     const st = todayAgentStatsByKey.get(session.extension);
     if (st) { session.callsTaken = st.callsTaken || 0; session.callsMade = st.callsMade || 0; session.pauseCount = st.pauseCount || 0; }
@@ -2582,6 +2589,14 @@ wss.on('connection', (ws, req, payload) => {
         if (msg.event === 'whatsapp_unassign') {
             // chat window unassign, supervisors only (v5.32)
             handleWhatsAppUnassign(entry, msg).catch((e) => console.error('whatsapp bridge: unassign failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'chat_pause') {
+            // Split pause (v5.35): the agent pauses CHATS only —
+            // voice status and Asterisk are untouched; the new flag
+            // rides the next presence push to the WhatsApp module.
+            session.chatPaused = !!msg.paused;
+            pushWhatsAppPresence(session).catch(() => {});
             return;
         }
         if (msg.event !== 'status_change') {
