@@ -73,6 +73,27 @@ async function ensureIssabelUsernameColumn() {
     } catch (_) {}
 }
 
+// The numeric Issabel user id next to the username (provisioning hub,
+// step 2): the agents page now PICKS the Issabel user from the real
+// acl list, so the link is stored by id and the username can never be
+// misspelled. Nullable: agents created before the hub keep working
+// with the username alone.
+async function ensureIssabelUserIdColumn() {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cc_agents' AND COLUMN_NAME = 'issabel_user_id' LIMIT 1"
+        );
+        if (!rows.length) {
+            await pool.execute('ALTER TABLE cc_agents ADD COLUMN issabel_user_id INT NULL');
+        }
+    } catch (e) {
+        if (!/Duplicate column/i.test(String(e && e.message || ''))) console.warn('issabel_user_id column: ' + e.message);
+    }
+    try {
+        await pool.execute('CREATE INDEX idx_cc_agents_issabel_user_id ON cc_agents (issabel_user_id)');
+    } catch (_) {}
+}
+
 // The sip secret of the extension, Issabel keeps it in the sip table.
 async function sipSecret(extension) {
     const [rows] = await pool.execute(
@@ -184,7 +205,7 @@ async function queueNames() {
 // Every agent with the queues it belongs to.
 async function allAgents() {
     const [agents] = await pool.execute(
-        'SELECT id, username, sip_extension, is_active, issabel_username FROM cc_agents ORDER BY username');
+        'SELECT id, username, sip_extension, is_active, issabel_username, issabel_user_id FROM cc_agents ORDER BY username');
     const [queues] = await pool.execute(
         'SELECT agent_id, queue_number FROM cc_agent_queues ORDER BY agent_id, queue_number');
     const byAgent = new Map();
@@ -199,6 +220,7 @@ async function allAgents() {
         username: agent.username,
         sip_extension: agent.sip_extension,
         issabel_username: agent.issabel_username || '',
+        issabel_user_id: agent.issabel_user_id == null ? null : Number(agent.issabel_user_id),
         active: !!agent.is_active,
         queues: byAgent.get(agent.id) || [],
     }));
@@ -229,9 +251,10 @@ async function setAgentQueues(agentId, queues) {
 // A new agent.
 async function createAgent(agent) {
     const issabelUser = agent.issabel_username ? String(agent.issabel_username).trim() : null;
+    const issabelUserId = Number.isInteger(agent.issabel_user_id) && agent.issabel_user_id > 0 ? agent.issabel_user_id : null;
     const [result] = await pool.execute(
-        'INSERT INTO cc_agents (username, password, sip_extension, is_active, issabel_username) VALUES (?, ?, ?, 1, ?)',
-        [agent.username, agent.password, agent.sip_extension, issabelUser || null]);
+        'INSERT INTO cc_agents (username, password, sip_extension, is_active, issabel_username, issabel_user_id) VALUES (?, ?, ?, 1, ?, ?)',
+        [agent.username, agent.password, agent.sip_extension, issabelUser || null, issabelUserId]);
     await setAgentQueues(result.insertId, agent.queues);
     return result.insertId;
 }
@@ -256,6 +279,10 @@ async function updateAgent(id, agent) {
         const iu = String(agent.issabel_username || '').trim();
         fields.push('issabel_username = ?');
         values.push(iu || null);
+    }
+    if (agent.issabel_user_id !== undefined) {
+        fields.push('issabel_user_id = ?');
+        values.push(Number.isInteger(agent.issabel_user_id) && agent.issabel_user_id > 0 ? agent.issabel_user_id : null);
     }
     if (agent.is_active !== undefined) {
         fields.push('is_active = ?');
@@ -922,6 +949,7 @@ module.exports = {
     findAgentByIssabelUsername,
     findAgentByIssabelIdentity,
     ensureIssabelUsernameColumn,
+    ensureIssabelUserIdColumn,
     sipSecret,
     sipInterface,
     agentQueues,

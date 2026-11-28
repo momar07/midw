@@ -1143,10 +1143,23 @@ app.get('/api/admin/agents', async (req, res) => {
         } catch (e) {
             console.error('the extensions of issabel could not be read: ' + e.message);
         }
+        // the provisioning pick-lists from the WhatsApp service (hub
+        // step 2): the real Issabel users and the chat queues. Empty
+        // when the WhatsApp link is down — the page then just offers
+        // no link, it never blocks agent management.
+        let issabelUsers = [];
+        let chatQueues = [];
+        try {
+            const lists = await waProvisioningLists();
+            issabelUsers = lists.users;
+            chatQueues = lists.queues;
+        } catch (e) { /* best-effort */ }
         res.json({
             agents: agents,
             extensions: extensions,
             configured_queues: configured,
+            issabel_users: issabelUsers,
+            chat_queues: chatQueues,
         });
     } catch (e) {
         console.error('the agents could not be read: ' + e.message);
@@ -1165,6 +1178,28 @@ async function checkQueuesOfIssabel(queues) {
     }
     return '';
 }
+
+// The WhatsApp state of one agent, for the edit form's chat section
+// (hub step 2). Proxied from the WhatsApp service so the form shows
+// the service's truth.
+app.get('/api/admin/agents/:id/wa', async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+        return res.status(400).json({ error: 'the id of the agent is not valid' });
+    }
+    try {
+        const agents = await db.allAgents();
+        const agent = agents.find((a) => a.id === id);
+        if (!agent) return res.status(404).json({ error: 'the agent is not in the list' });
+        if (!agent.issabel_user_id) return res.json({ ok: true, linked: false });
+        const r = await waInternalGet('/internal/agents/' + agent.issabel_user_id, 8000);
+        if (!r.ok || !r.json) return res.json({ ok: true, linked: true, available: false });
+        return res.json({ ok: true, linked: true, available: true, profile: r.json.profile || null, memberships: r.json.memberships || [] });
+    } catch (e) {
+        console.error('the whatsapp state of the agent could not be read: ' + e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
 
 app.post('/api/admin/agents', async (req, res) => {
     const body = req.body || {};
@@ -1185,16 +1220,21 @@ app.post('/api/admin/agents', async (req, res) => {
         console.error('the queues of issabel could not be read: ' + e.message);
     }
     const issabelUsername = String(body.issabel_username || '').trim();
+    const issabelUserId = parseInt(body.issabel_user_id, 10);
     try {
         const id = await db.createAgent({
             username: username,
             password: password,
             sip_extension: extension,
             issabel_username: issabelUsername,
+            issabel_user_id: Number.isFinite(issabelUserId) && issabelUserId > 0 ? issabelUserId : null,
             queues: body.queues,
         });
         console.log('the supervisor created the agent ' + username + ' (' + extension + ')');
-        res.status(201).json({ ok: true, id: id });
+        const waSync = await waSyncAgentFor(
+            Number.isFinite(issabelUserId) && issabelUserId > 0 ? issabelUserId : null,
+            issabelUsername, body.queues, body.chat);
+        res.status(201).json({ ok: true, id: id, wa_sync: waSync });
     } catch (e) {
         if (e.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'the user name is already taken' });
@@ -1221,16 +1261,36 @@ app.put('/api/admin/agents/:id', async (req, res) => {
         console.error('the queues of issabel could not be read: ' + e.message);
     }
     try {
-        await db.updateAgent(id, {
+        const update = {
             username: body.username,
             password: body.password,
             sip_extension: body.sip_extension,
             issabel_username: body.issabel_username,
             is_active: body.is_active,
             queues: body.queues,
-        });
+        };
+        if (body.issabel_user_id !== undefined) {
+            const uid = parseInt(body.issabel_user_id, 10);
+            update.issabel_user_id = Number.isFinite(uid) && uid > 0 ? uid : null;
+        }
+        await db.updateAgent(id, update);
         console.log('the supervisor changed the agent ' + id);
-        res.json({ ok: true });
+        // Provisioning (hub step 2): sync the WhatsApp side when the
+        // save carries provisioning fields, and when the agent is
+        // being disabled — a disabled agent must stop receiving chat
+        // too. Plain saves (e.g. a password change) do not re-sync.
+        let waSync;
+        const carriesProvisioning = body.chat !== undefined || body.issabel_user_id !== undefined;
+        const beingDisabled = body.is_active !== undefined && !body.is_active;
+        if (carriesProvisioning || beingDisabled) {
+            const agents = await db.allAgents();
+            const agent = agents.find((a) => a.id === id);
+            if (agent && agent.issabel_user_id) {
+                const chat = beingDisabled ? { enabled: false } : body.chat;
+                waSync = await waSyncAgentFor(agent.issabel_user_id, agent.issabel_username, agent.queues, chat);
+            }
+        }
+        res.json(waSync ? { ok: true, wa_sync: waSync } : { ok: true });
     } catch (e) {
         if (e.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ error: 'the user name is already taken' });
@@ -1246,9 +1306,16 @@ app.delete('/api/admin/agents/:id', async (req, res) => {
         return res.status(400).json({ error: 'the id of the agent is not valid' });
     }
     try {
+        const before = await db.allAgents();
+        const agent = before.find((a) => a.id === id);
         await db.disableAgent(id);
         console.log('the supervisor disabled the agent ' + id);
-        res.json({ ok: true });
+        // a disabled agent stops receiving WhatsApp chat too (hub)
+        let waSync;
+        if (agent && agent.issabel_user_id) {
+            waSync = await waSyncAgentFor(agent.issabel_user_id, agent.issabel_username, agent.queues, { enabled: false });
+        }
+        res.json(waSync ? { ok: true, wa_sync: waSync } : { ok: true });
     } catch (e) {
         console.error('the agent could not be disabled: ' + e.message);
         res.status(500).json({ error: e.message });
@@ -1884,6 +1951,90 @@ function waInternalPost(pathName, payload, timeoutMs) {
         req.write(body);
         req.end();
     });
+}
+
+// GET twin of waInternalPost, for the provisioning pick-lists and the
+// per-agent WhatsApp state (hub step 2). Same resolve contract.
+function waInternalGet(pathName, timeoutMs) {
+    return new Promise((resolve) => {
+        if (!config.waInternalUrl || !config.waInternalToken) {
+            return resolve({ ok: false, status: 0, json: null, error: 'the WhatsApp link is not configured' });
+        }
+        let url;
+        try {
+            url = new URL(config.waInternalUrl + pathName);
+        } catch (e) {
+            return resolve({ ok: false, status: 0, json: null, error: 'bad WA_INTERNAL_URL' });
+        }
+        const lib = url.protocol === 'https:' ? https : http;
+        const req = lib.request({
+            method: 'GET',
+            hostname: url.hostname,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
+            path: url.pathname + url.search,
+            headers: { 'X-Internal-Token': config.waInternalToken },
+            timeout: timeoutMs || 10000,
+        }, (res) => {
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () => {
+                let json = null;
+                try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* non-JSON */ }
+                const ok = res.statusCode >= 200 && res.statusCode < 300;
+                resolve({ ok, status: res.statusCode, json, error: ok ? null : ((json && (json.message || json.error)) || 'HTTP ' + res.statusCode) });
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('timeout')));
+        req.on('error', (e) => resolve({ ok: false, status: 0, json: null, error: e.message }));
+        req.end();
+    });
+}
+
+// Agent provisioning (hub step 2): the Manage Agents page defines an
+// agent once for every channel. It reads the Issabel users and the
+// chat queues from the WhatsApp service, and after each save it posts
+// the desired WhatsApp state there. Best-effort like the rest of the
+// bridge: the call-center save never fails because WhatsApp is down —
+// the outcome is reported back as wa_sync instead.
+async function waProvisioningLists() {
+    const [u, q] = await Promise.all([
+        waInternalGet('/internal/issabel-users', 8000),
+        waInternalGet('/internal/queues', 8000),
+    ]);
+    return {
+        users: u.ok && u.json && Array.isArray(u.json.users) ? u.json.users : [],
+        queues: q.ok && q.json && Array.isArray(q.json.queues) ? q.json.queues : [],
+    };
+}
+
+async function waSyncAgentFor(issabelUserId, username, voiceQueues, chat) {
+    if (!issabelUserId) return { skipped: true, reason: 'no Issabel user is linked' };
+    if (!config.waInternalUrl || !config.waInternalToken) return { skipped: true, reason: 'the WhatsApp link is not configured' };
+    let byId = new Map();
+    if (chat && chat.enabled && Array.isArray(chat.queues) && chat.queues.length) {
+        const lists = await waProvisioningLists();
+        byId = new Map(lists.queues.map((q) => [Number(q.id), q]));
+    }
+    const voice = (voiceQueues || []).map((n) => String(n));
+    const queues = (chat && Array.isArray(chat.queues) ? chat.queues : []).map((qid) => {
+        const meta = byId.get(Number(qid));
+        return {
+            queue_id: Number(qid),
+            can_chat: true,
+            // voice on this queue only when the queue's linked
+            // Asterisk queue is one of the agent's voice queues
+            can_voice: !!(meta && meta.asterisk_queue && voice.indexOf(String(meta.asterisk_queue)) !== -1),
+        };
+    });
+    const r = await waInternalPost('/internal/agents/sync', {
+        issabel_user_id: issabelUserId,
+        username: username || undefined,
+        chat_enabled: !!(chat && chat.enabled),
+        is_supervisor: !!(chat && chat.supervisor),
+        queues: queues,
+    }, 15000);
+    if (!r.ok) return { ok: false, error: r.error || ('the WhatsApp service answered ' + r.status) };
+    return { ok: true };
 }
 
 // The identity the WhatsApp service knows this agent by:
@@ -2979,6 +3130,7 @@ async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
 // then only serves the client.
 db.ensureCustomReportsTable().catch((e) => console.error('cc_custom_reports init failed: ' + e.message));
 if (db.ensureIssabelUsernameColumn) db.ensureIssabelUsernameColumn().catch((e) => console.error('issabel_username init failed: ' + e.message));
+if (db.ensureIssabelUserIdColumn) db.ensureIssabelUserIdColumn().catch((e) => console.error('issabel_user_id init failed: ' + e.message));
 ensureCrmTables().catch((e) => console.error('crm tables init failed: ' + e.message));
 
 if (config.ami.user) {

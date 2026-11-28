@@ -659,9 +659,15 @@
   <div class="modal-body">
     <div class="mb-3"><label class="form-label" for="agent-username">User name</label><input type="text" class="form-control" id="agent-username"></div>
     <div class="mb-3"><label class="form-label" for="agent-password">Password</label><input type="password" class="form-control" id="agent-password" placeholder="the password of the agent"></div>
-    <div class="mb-3"><label class="form-label" for="agent-issabel-username">Issabel username (SSO link)</label><input type="text" class="form-control" id="agent-issabel-username" placeholder="Issabel login user to map"></div>
+    <div class="mb-3"><label class="form-label" for="agent-issabel-user">Issabel user (SSO link)</label><select class="form-select" id="agent-issabel-user"></select><div class="form-text">pick the real Issabel user — the link is chosen, never typed, so it cannot be misspelled</div></div>
     <div class="mb-3"><label class="form-label" for="agent-extension">SIP extension</label><select class="form-select" id="agent-extension"></select></div>
-    <div class="mb-3"><label class="form-label">Queues</label><select class="form-select" id="agent-queues" multiple size="4"></select><div class="form-text">ctrl or shift to pick more than one</div></div>
+    <div class="mb-3"><label class="form-label">Channels</label>
+      <div class="form-check"><input type="checkbox" class="form-check-input" id="agent-ch-voice" checked><label class="form-check-label" for="agent-ch-voice">Voice — Asterisk queues</label></div>
+      <div class="form-check"><input type="checkbox" class="form-check-input" id="agent-ch-chat"><label class="form-check-label" for="agent-ch-chat">Chat — WhatsApp queues</label></div>
+      <div class="form-check ms-4"><input type="checkbox" class="form-check-input" id="agent-ch-wa-supervisor"><label class="form-check-label" for="agent-ch-wa-supervisor">WhatsApp supervisor</label></div>
+    </div>
+    <div class="mb-3" id="agent-voice-queues-block"><label class="form-label">Voice queues</label><select class="form-select" id="agent-queues" multiple size="4"></select><div class="form-text">ctrl or shift to pick more than one</div></div>
+    <div class="mb-3" id="agent-chat-queues-block" hidden><label class="form-label">WhatsApp queues</label><select class="form-select" id="agent-chat-queues" multiple size="4"></select><div class="form-text">ctrl or shift to pick more than one</div></div>
     <div class="form-text" id="agent-modal-hint"></div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="agent-save">Save</button></div>
@@ -702,6 +708,8 @@ let editing = null;
 let adminAgents = [];
 let knownExtensions = [];
 let configuredQueues = [];
+let issabelUsers = [];
+let chatQueues = [];
 let reasons = [];
 let editingReason = null;
 let aPage = 1;
@@ -1172,6 +1180,7 @@ function loadAgents(silent) {
         if (request.status !== 200) { if (!silent) setStatus('the agents could not be read (' + request.status + ')', 'text-danger'); return; }
         let data={}; try { data = JSON.parse(request.responseText); } catch(e) { data={}; }
         knownExtensions = data.extensions || []; configuredQueues = data.configured_queues || []; adminAgents = data.agents || [];
+        issabelUsers = data.issabel_users || []; chatQueues = data.chat_queues || [];
         try { renderAgents(adminAgents); } catch(e) {}
         try { fillReportAgents(); } catch(e) {}
     };
@@ -1182,7 +1191,9 @@ function renderAgents(list) {
     const rows = [];
     for (const agent of list) {
         rows.push('<tr' + (agent.active ? '' : ' class="text-muted"') + '>'
-            + '<td>' + escapeHtml(agent.username) + '</td><td class="mono">' + escapeHtml(agent.sip_extension) + '</td>'
+            + '<td>' + escapeHtml(agent.username) + '</td>'
+            + '<td>' + (agent.issabel_username ? escapeHtml(agent.issabel_username) + (agent.issabel_user_id ? ' <span class="text-muted">#' + agent.issabel_user_id + '</span>' : '') : '<span class="text-muted">—</span>') + '</td>'
+            + '<td class="mono">' + escapeHtml(agent.sip_extension) + '</td>'
             + '<td class="mono">' + escapeHtml((agent.queues || []).join(', ')) + '</td>'
             + '<td>' + (agent.active ? '<span class="badge text-bg-success badge-status">Active</span>' : '<span class="badge text-bg-secondary badge-status">Disabled</span>') + '</td>'
             + '<td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" onclick="openAgent(' + agent.id + ')">Edit</button>'
@@ -1190,6 +1201,38 @@ function renderAgents(list) {
             + '</td></tr>');
     }
     el('agent-rows').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="6" class="text-center text-muted py-4">no agent</td></tr>';
+}
+function renderIssabelUsers(selectedId, legacyUsername) {
+    let html = '<option value="">— not linked —</option>';
+    let matched = false;
+    for (const u of issabelUsers) {
+        const sel = selectedId && Number(u.issabel_user_id) === Number(selectedId);
+        if (sel) matched = true;
+        html += '<option value="' + Number(u.issabel_user_id) + '"' + (sel ? ' selected' : '') + '>' + escapeHtml(u.username) + '</option>';
+    }
+    if (!matched && legacyUsername) {
+        // the agent carries a link the WhatsApp list does not know
+        // (typed before the hub, or the list is down): keep it visible
+        // and selected so a save does not silently drop it
+        html += '<option value="legacy" selected>' + escapeHtml(legacyUsername) + ' (current link)</option>';
+    }
+    el('agent-issabel-user').innerHTML = html;
+}
+function renderChatQueues(selectedIds) {
+    const wanted = (selectedIds || []).map(Number);
+    let html = '';
+    for (const q of chatQueues) {
+        const label = q.name + (q.code ? ' (' + q.code + ')' : '') + (q.asterisk_queue ? ' ↔ voice ' + q.asterisk_queue : '');
+        html += '<option value="' + Number(q.id) + '"' + (wanted.indexOf(Number(q.id)) !== -1 ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+    }
+    if (!html) html = '<option value="" disabled>no chat queue yet</option>';
+    el('agent-chat-queues').innerHTML = html;
+}
+function selectedChatQueues() { const out = []; for (const o of el('agent-chat-queues').options) if (o.selected && o.value) out.push(parseInt(o.value, 10)); return out.filter(function (n) { return Number.isFinite(n); }); }
+function syncChannelBlocks() {
+    el('agent-voice-queues-block').hidden = !el('agent-ch-voice').checked;
+    el('agent-chat-queues-block').hidden = !el('agent-ch-chat').checked;
+    el('agent-ch-wa-supervisor').disabled = !el('agent-ch-chat').checked;
 }
 function renderExtensions(selected) {
     const list = knownExtensions.slice(); if (selected && list.indexOf(selected) === -1) list.push(selected);
@@ -1205,22 +1248,55 @@ function openModal(id) { new bootstrap.Modal(document.getElementById(id || 'agen
 function selectedQueues() { const queues=[]; for (const o of el('agent-queues').options) if (o.selected && o.value) queues.push(o.value); return queues; }
 function selectedExtension() { return el('agent-extension').value; }
 function openAgent(id) {
-    editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; if (el('agent-issabel-username')) el('agent-issabel-username').value = ''; el('agent-modal-hint').textContent = '';
+    editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; el('agent-modal-hint').textContent = '';
+    el('agent-ch-voice').checked = true; el('agent-ch-chat').checked = false; el('agent-ch-wa-supervisor').checked = false;
+    renderIssabelUsers(null, ''); renderChatQueues([]);
     renderExtensions(''); renderQueues([]);
+    syncChannelBlocks();
     if (id) {
         const agent = adminAgents.find(function (a) { return a.id === id; });
         if (!agent) { setStatus('the agent is not in the list any more', 'text-danger'); return; }
-        editing = agent; el('agent-modal-title').textContent = 'Edit ' + agent.username; el('agent-username').value = agent.username; el('agent-password').value = ''; if (el('agent-issabel-username')) el('agent-issabel-username').value = agent.issabel_username || '';
+        editing = agent; el('agent-modal-title').textContent = 'Edit ' + agent.username; el('agent-username').value = agent.username; el('agent-password').value = '';
         el('agent-modal-hint').textContent = 'the password stays the same when the field is empty';
         renderExtensions(agent.sip_extension); renderQueues(agent.queues || []);
+        renderIssabelUsers(agent.issabel_user_id, agent.issabel_username || '');
+        el('agent-ch-voice').checked = (agent.queues || []).length > 0;
+        syncChannelBlocks();
         const missing = (agent.queues || []).filter(function (queue) { return configuredQueues.indexOf(queue) === -1; });
         if (missing.length) el('agent-modal-hint').textContent += ' (the queue ' + missing.join(', ') + ' is not in Issabel, it goes away with the save)';
+        // pre-fill the chat section from the WhatsApp service's truth
+        const mine = agent;
+        const request = new XMLHttpRequest();
+        request.open('GET', adminUrl('api/admin/agents/' + agent.id + '/wa'), true);
+        request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
+        request.onload = function () {
+            if (editing !== mine || request.status !== 200) return;
+            let data = {}; try { data = JSON.parse(request.responseText); } catch (e) { return; }
+            if (!data.linked || !data.available || !data.profile) return;
+            el('agent-ch-chat').checked = !!data.profile.is_agent;
+            el('agent-ch-wa-supervisor').checked = !!data.profile.is_supervisor;
+            renderChatQueues((data.memberships || []).filter(function (m) { return m.can_chat; }).map(function (m) { return m.queue_id; }));
+            syncChannelBlocks();
+        };
+        request.send();
     }
     openModal('agent-modal');
 }
 function saveAgent() {
-    const body = { username: el('agent-username').value.trim(), password: el('agent-password').value, issabel_username: (el('agent-issabel-username') ? el('agent-issabel-username').value.trim() : ''), sip_extension: selectedExtension(), queues: selectedQueues() };
+    const sel = el('agent-issabel-user');
+    let issabelUserId = null; let issabelUsername = '';
+    if (sel.value === 'legacy') { issabelUsername = editing ? (editing.issabel_username || '') : ''; }
+    else if (sel.value) { issabelUserId = parseInt(sel.value, 10); issabelUsername = sel.options[sel.selectedIndex].textContent; }
+    const chatOn = el('agent-ch-chat').checked;
+    const body = {
+        username: el('agent-username').value.trim(), password: el('agent-password').value,
+        issabel_username: issabelUsername, issabel_user_id: issabelUserId,
+        sip_extension: selectedExtension(),
+        queues: el('agent-ch-voice').checked ? selectedQueues() : [],
+        chat: { enabled: chatOn, supervisor: chatOn && el('agent-ch-wa-supervisor').checked, queues: chatOn ? selectedChatQueues() : [] },
+    };
     if (!body.username || !body.sip_extension || (!body.password && !editing)) { el('agent-modal-hint').textContent = 'the user name, the password and the extension are needed'; return; }
+    if (chatOn && !issabelUserId) { el('agent-modal-hint').textContent = 'chat needs a linked Issabel user — pick one above'; return; }
     const request = new XMLHttpRequest();
     request.open(editing ? 'PUT' : 'POST', adminUrl('api/admin/agents' + (editing ? '/' + editing.id : '')), true);
     request.setRequestHeader('Content-Type', 'application/json'); request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
@@ -1229,7 +1305,10 @@ function saveAgent() {
             let message = 'the agent could not be saved (' + request.status + ')'; try { message = JSON.parse(request.responseText).error || message; } catch (e) {}
             el('agent-modal-hint').textContent = message; return;
         }
+        let waSync = null; try { waSync = JSON.parse(request.responseText).wa_sync || null; } catch (e) {}
         bootstrap.Modal.getInstance(document.getElementById('agent-modal')).hide(); loadAgents();
+        if (waSync && waSync.ok === false) setStatus('the agent was saved, but the WhatsApp sync failed: ' + (waSync.error || 'unknown error'), 'text-danger');
+        else if (waSync && waSync.skipped && chatOn) setStatus('the agent was saved; the WhatsApp sync was skipped: ' + (waSync.reason || ''), 'text-danger');
     };
     request.send(JSON.stringify(body));
 }
@@ -2740,6 +2819,8 @@ function initCrmUiHandlers() {
 }
 
 el('agent-save').addEventListener('click', saveAgent);
+el('agent-ch-voice').addEventListener('change', syncChannelBlocks);
+el('agent-ch-chat').addEventListener('change', syncChannelBlocks);
 el('reason-save').addEventListener('click', saveReason);
 </script>
 
