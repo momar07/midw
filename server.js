@@ -372,6 +372,8 @@ function setSessionCallState(session, callState, caller) {
         session.talkingCaller = '';
         session.callSince = 0;
     }
+    // Phase 4: the WhatsApp module hears about call start/end here.
+    pushWhatsAppPresence(session).catch(() => {});
 }
 
 function computeKpis(queues) {
@@ -1349,6 +1351,7 @@ async function setAllAgents(status, reason) {
         entry.session.status = status;
         entry.session.reason = reason || '';
         entry.session.statusSince = now();
+        pushWhatsAppPresence(entry.session).catch(() => {});
         await db.logEvent(entry.session.agentId, status === 'pause' ? 'pause' : 'unpause', reason || '');
         await amiQueuePause(entry.session, status === 'pause', reason || '');
         try {
@@ -1883,6 +1886,7 @@ app.post('/simulate/state', async (req, res) => {
         entry.session.status = status;
         entry.session.reason = reason;
         entry.session.statusSince = now();
+        pushWhatsAppPresence(entry.session).catch(() => {});
         await db.logEvent(entry.session.agentId, status === 'pause' ? 'pause' : 'unpause', reason);
         await amiQueuePause(entry.session, status === 'pause', reason);
         broadcastSupervisor();
@@ -2064,6 +2068,49 @@ async function waIdentityFor(session) {
         if (rows.length && rows[0].issabel_username) issabelUsername = String(rows[0].issabel_username);
     } catch (e) { /* identity falls back to the login username */ }
     return { username: session.username, issabel_username: issabelUsername || session.username };
+}
+
+// Unified presence (Phase 4): report each GLM agent's voice state to
+// the WhatsApp service, which folds fresh reports into chat
+// assignment — an agent on a call, paused or logged out is skipped
+// for NEW chats, and the feed fails open after 120 s of silence, so
+// a 30 s heartbeat re-posts every live session. Pushes are
+// deduplicated by a per-agent signature: call-state reconciliation
+// may call us often, only changes go on the wire.
+const waPresenceSent = new Map();
+async function pushWhatsAppPresence(session, force) {
+    if (!session || !session.agentId) return;
+    const voiceStatus = session.status === 'pause' ? 'pause' : 'available';
+    const inCall = !!session.callState;
+    const sig = voiceStatus + '|' + (inCall ? 1 : 0);
+    if (!force && waPresenceSent.get(session.agentId) === sig) return;
+    waPresenceSent.set(session.agentId, sig);
+    try {
+        const identity = await waIdentityFor(session);
+        await waInternalPost('/internal/presence', {
+            username: identity.issabel_username, voice_status: voiceStatus, in_call: inCall,
+        }, 10000);
+    } catch (e) { /* the next change or heartbeat retries */ }
+}
+async function pushWhatsAppOffline(session) {
+    if (!session || !session.agentId) return;
+    waPresenceSent.delete(session.agentId);
+    try {
+        const identity = await waIdentityFor(session);
+        await waInternalPost('/internal/presence', {
+            username: identity.issabel_username, voice_status: 'offline', in_call: false,
+        }, 10000);
+    } catch (e) { /* the 120 s fail-open covers a lost goodbye */ }
+}
+let waPresenceTimer = null;
+function startWhatsAppPresenceHeartbeat() {
+    if (waPresenceTimer) return;
+    waPresenceTimer = setInterval(() => {
+        for (const entry of sessions.values()) {
+            pushWhatsAppPresence(entry.session, true).catch(() => {});
+        }
+    }, 30 * 1000);
+    if (waPresenceTimer.unref) waPresenceTimer.unref();
 }
 
 // An agent just came online: ask the WhatsApp service to push their
@@ -2400,6 +2447,8 @@ function dropSession(entry, why) {
     }
     entry.dropped = true;
     sessions.delete(entry.session.extension);
+    // Phase 4: the WhatsApp module hears the agent is gone.
+    pushWhatsAppOffline(entry.session).catch(() => {});
     console.log('the agent ' + entry.session.extension + ' leaves the queues (' + why + ')');
     broadcastSupervisor();
     amiQueueRemove(entry.session).catch(() => {});
@@ -2472,6 +2521,8 @@ wss.on('connection', (ws, req, payload) => {
     // phonebar Phase 2: the agent's WhatsApp badge should be correct
     // from the first second of the session, not from the next event
     pingWhatsAppSnapshot(session);
+    // Phase 4: announce the agent's voice presence to WhatsApp.
+    pushWhatsAppPresence(session, true).catch(() => {});
     if (!abuseStatsByExt.has(session.extension)) {
         abuseStatsByExt.set(session.extension, { abuse_timeout: 0, abuse_declined: 0, abuse_total: 0, abuse_recent: [] });
     }
@@ -2571,6 +2622,8 @@ wss.on('connection', (ws, req, payload) => {
             assigned_queues: session.queues,
             timestamp: now(),
         }));
+        // Phase 4: WhatsApp hears about the pause / resume too.
+        pushWhatsAppPresence(session).catch(() => {});
     });
 
     ws.on('close', () => {
@@ -2590,6 +2643,7 @@ function clearAgentCallState(session, toReady) {
     session.activeQueue = '';
     session.activeCallUid = '';
     if (toReady) session.statusSince = now();
+    pushWhatsAppPresence(session).catch(() => {});
 }
 
 function callIdKey(fields, q, caller) {
@@ -3282,6 +3336,7 @@ server.listen(config.port, () => {
     console.log('  the asterisk   : ' + (config.ami.user
         ? config.ami.user + '@' + config.ami.host + ':' + config.ami.port
         : 'no ami user, the queues are not touched'));
+    startWhatsAppPresenceHeartbeat();
 });
 
 function shutdown() {
