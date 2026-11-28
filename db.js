@@ -21,7 +21,7 @@ const pool = mysql.createPool({
 // as it is in the table.
 async function findAgent(username, password) {
     const [rows] = await pool.execute(
-        'SELECT id, username, sip_extension, issabel_username FROM cc_agents '
+        'SELECT id, username, agent_name, sip_extension, issabel_username FROM cc_agents '
         + 'WHERE username = ? AND password = ? AND is_active = 1 LIMIT 1',
         [username, password]);
     return rows.length ? rows[0] : null;
@@ -30,7 +30,7 @@ async function findAgent(username, password) {
 async function findAgentByIssabelUsername(issabelUsername) {
     if (!issabelUsername) return null;
     const [rows] = await pool.execute(
-        'SELECT id, username, sip_extension, issabel_username FROM cc_agents WHERE issabel_username = ? AND is_active = 1 LIMIT 1',
+        'SELECT id, username, agent_name, sip_extension, issabel_username FROM cc_agents WHERE issabel_username = ? AND is_active = 1 LIMIT 1',
         [String(issabelUsername)]
     );
     return rows.length ? rows[0] : null;
@@ -51,7 +51,7 @@ async function findAgentByIssabelUsername(issabelUsername) {
 async function findAgentByIssabelIdentity(identity) {
     if (!identity) return null;
     const [rows] = await pool.execute(
-        'SELECT id, username, sip_extension, issabel_username FROM cc_agents '
+        'SELECT id, username, agent_name, sip_extension, issabel_username FROM cc_agents '
         + 'WHERE is_active = 1 AND (issabel_username = ? OR username = ?) LIMIT 1',
         [String(identity), String(identity)]);
     return rows.length ? rows[0] : null;
@@ -92,6 +92,21 @@ async function ensureIssabelUserIdColumn() {
     try {
         await pool.execute('CREATE INDEX idx_cc_agents_issabel_user_id ON cc_agents (issabel_user_id)');
     } catch (_) {}
+}
+
+// The agent's friendly display name (hub form field). The login stays
+// the Issabel username; this is only what humans see in lists.
+async function ensureAgentNameColumn() {
+    try {
+        const [rows] = await pool.execute(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cc_agents' AND COLUMN_NAME = 'agent_name' LIMIT 1"
+        );
+        if (!rows.length) {
+            await pool.execute('ALTER TABLE cc_agents ADD COLUMN agent_name VARCHAR(120) NULL');
+        }
+    } catch (e) {
+        if (!/Duplicate column/i.test(String(e && e.message || ''))) console.warn('agent_name column: ' + e.message);
+    }
 }
 
 // The sip secret of the extension, Issabel keeps it in the sip table.
@@ -205,7 +220,7 @@ async function queueNames() {
 // Every agent with the queues it belongs to.
 async function allAgents() {
     const [agents] = await pool.execute(
-        'SELECT id, username, sip_extension, is_active, issabel_username, issabel_user_id FROM cc_agents ORDER BY username');
+        'SELECT id, username, agent_name, sip_extension, is_active, issabel_username, issabel_user_id FROM cc_agents ORDER BY username');
     const [queues] = await pool.execute(
         'SELECT agent_id, queue_number FROM cc_agent_queues ORDER BY agent_id, queue_number');
     const byAgent = new Map();
@@ -218,6 +233,7 @@ async function allAgents() {
     return agents.map((agent) => ({
         id: agent.id,
         username: agent.username,
+        agent_name: agent.agent_name || '',
         sip_extension: agent.sip_extension,
         issabel_username: agent.issabel_username || '',
         issabel_user_id: agent.issabel_user_id == null ? null : Number(agent.issabel_user_id),
@@ -252,9 +268,10 @@ async function setAgentQueues(agentId, queues) {
 async function createAgent(agent) {
     const issabelUser = agent.issabel_username ? String(agent.issabel_username).trim() : null;
     const issabelUserId = Number.isInteger(agent.issabel_user_id) && agent.issabel_user_id > 0 ? agent.issabel_user_id : null;
+    const agentName = agent.agent_name ? String(agent.agent_name).trim().slice(0, 120) : null;
     const [result] = await pool.execute(
-        'INSERT INTO cc_agents (username, password, sip_extension, is_active, issabel_username, issabel_user_id) VALUES (?, ?, ?, 1, ?, ?)',
-        [agent.username, agent.password, agent.sip_extension, issabelUser || null, issabelUserId]);
+        'INSERT INTO cc_agents (username, agent_name, password, sip_extension, is_active, issabel_username, issabel_user_id) VALUES (?, ?, ?, ?, 1, ?, ?)',
+        [agent.username, agentName || null, agent.password, agent.sip_extension, issabelUser || null, issabelUserId]);
     await setAgentQueues(result.insertId, agent.queues);
     return result.insertId;
 }
@@ -266,6 +283,11 @@ async function updateAgent(id, agent) {
     if (agent.username !== undefined) {
         fields.push('username = ?');
         values.push(String(agent.username));
+    }
+    if (agent.agent_name !== undefined) {
+        const an = String(agent.agent_name || '').trim().slice(0, 120);
+        fields.push('agent_name = ?');
+        values.push(an || null);
     }
     if (agent.password !== undefined && agent.password !== '') {
         fields.push('password = ?');
@@ -950,6 +972,7 @@ module.exports = {
     findAgentByIssabelIdentity,
     ensureIssabelUsernameColumn,
     ensureIssabelUserIdColumn,
+    ensureAgentNameColumn,
     sipSecret,
     sipInterface,
     agentQueues,

@@ -78,7 +78,7 @@ async function resolveCrmIdentity(req) {
             try {
                 const agent = await db.findAgentByIssabelUsername(p.issabel_user);
                 if (agent) {
-                    return { role: 'agent', agent_id: agent.id, agent_ext: String(agent.sip_extension || ''), agent_name: agent.username, issabel_user: p.issabel_user, via: 'issabel_sso' };
+                    return { role: 'agent', agent_id: agent.id, agent_ext: String(agent.sip_extension || ''), agent_name: agent.agent_name || agent.username, issabel_user: p.issabel_user, via: 'issabel_sso' };
                 }
             } catch (_) {}
             return { role: 'admin', issabel_user: p.issabel_user, via: 'issabel_sso' };
@@ -715,7 +715,7 @@ app.use('/api/crm', async (req, res, next) => {
     if (auth.role === 'issabel_sso_pending') {
         try {
             const agent = await db.findAgentByIssabelUsername(auth.issabel_user);
-            if (agent) auth = { role: 'agent', agent_id: agent.id, agent_ext: String(agent.sip_extension || ''), agent_name: agent.username, issabel_user: auth.issabel_user, via: 'issabel_sso' };
+            if (agent) auth = { role: 'agent', agent_id: agent.id, agent_ext: String(agent.sip_extension || ''), agent_name: agent.agent_name || agent.username, issabel_user: auth.issabel_user, via: 'issabel_sso' };
             else auth = { role: 'admin', issabel_user: auth.issabel_user, via: 'issabel_sso' };
         } catch (_) {
             auth = { role: 'admin', issabel_user: auth.issabel_user, via: 'issabel_sso' };
@@ -1225,6 +1225,7 @@ app.post('/api/admin/agents', async (req, res) => {
     try {
         const id = await db.createAgent({
             username: username,
+            agent_name: body.agent_name,
             password: password,
             sip_extension: extension,
             issabel_username: issabelUsername,
@@ -1265,6 +1266,7 @@ app.put('/api/admin/agents/:id', async (req, res) => {
         await normalizeIssabelPair(body);
         const update = {
             username: body.username,
+            agent_name: body.agent_name,
             password: body.password,
             sip_extension: body.sip_extension,
             issabel_username: body.issabel_username,
@@ -3146,6 +3148,7 @@ async function crmHandleScreenPop(agentExt, callerId, uniqueid) {
 db.ensureCustomReportsTable().catch((e) => console.error('cc_custom_reports init failed: ' + e.message));
 if (db.ensureIssabelUsernameColumn) db.ensureIssabelUsernameColumn().catch((e) => console.error('issabel_username init failed: ' + e.message));
 if (db.ensureIssabelUserIdColumn) db.ensureIssabelUserIdColumn().catch((e) => console.error('issabel_user_id init failed: ' + e.message));
+if (db.ensureAgentNameColumn) db.ensureAgentNameColumn().catch((e) => console.error('agent_name init failed: ' + e.message));
 ensureCrmTables().catch((e) => console.error('crm tables init failed: ' + e.message));
 
 if (config.ami.user) {

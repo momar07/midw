@@ -657,8 +657,9 @@
 <div class="modal fade" id="agent-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
   <div class="modal-header"><h5 class="modal-title" id="agent-modal-title">Create Agent</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
+    <div class="mb-3"><label class="form-label" for="agent-display-name">Agent name</label><input type="text" class="form-control" id="agent-display-name" placeholder="the name people see, e.g. Wael Samy" autocomplete="off"><div class="form-text">a friendly display name for lists and reports — the login below stays the Issabel user</div></div>
     <div class="mb-3"><label class="form-label" for="agent-username">User name — the Issabel user</label><div class="position-relative"><div class="input-group"><input type="text" class="form-control" id="agent-username" placeholder="type a letter or two, or open the list" autocomplete="off"><button type="button" class="btn btn-outline-secondary" id="agent-username-toggle" tabindex="-1" title="show all Issabel users">▾</button></div><div id="agent-username-list" class="list-group position-absolute w-100 shadow" style="z-index:1060; max-height:240px; overflow:auto" hidden></div></div><div class="form-text">the agent's name IS their Issabel user — one identity for the call center, the SSO link and WhatsApp</div></div>
-    <div class="mb-3"><label class="form-label" for="agent-password">Password</label><input type="password" class="form-control" id="agent-password" placeholder="the password of the agent"></div>
+    <div class="mb-3"><label class="form-label" for="agent-password">Password</label><div class="input-group"><input type="password" class="form-control" id="agent-password" placeholder="the password of the agent"><button type="button" class="btn btn-outline-secondary" id="agent-password-generate">Generate</button></div><div class="form-text" id="agent-password-hint"></div></div>
     <div class="mb-3"><label class="form-label" for="agent-extension">SIP extension</label><select class="form-select" id="agent-extension"></select></div>
     <div class="mb-3"><label class="form-label">Channels</label>
       <div class="form-check"><input type="checkbox" class="form-check-input" id="agent-ch-voice" checked><label class="form-check-label" for="agent-ch-voice">Voice — Asterisk queues</label></div>
@@ -1210,7 +1211,7 @@ function renderAgents(list) {
     const rows = [];
     for (const agent of list) {
         rows.push('<tr' + (agent.active ? '' : ' class="text-muted"') + '>'
-            + '<td>' + escapeHtml(agent.username) + '</td>'
+            + '<td>' + (agent.agent_name ? escapeHtml(agent.agent_name) + '<br><span class="text-muted small">' + escapeHtml(agent.username) + '</span>' : escapeHtml(agent.username)) + '</td>'
             + '<td>' + (agent.issabel_username ? escapeHtml(agent.issabel_username) + (agent.issabel_user_id ? ' <span class="text-muted">#' + agent.issabel_user_id + '</span>' : '') : '<span class="text-muted">—</span>') + '</td>'
             + '<td class="mono">' + escapeHtml(agent.sip_extension) + '</td>'
             + '<td class="mono">' + escapeHtml((agent.queues || []).join(', ')) + '</td>'
@@ -1291,7 +1292,12 @@ function syncChannelBlocks() {
     el('agent-ch-wa-supervisor').disabled = !el('agent-ch-chat').checked;
 }
 function renderExtensions(selected) {
-    const list = knownExtensions.slice(); if (selected && list.indexOf(selected) === -1) list.push(selected);
+    // extensions already taken by OTHER agents are hidden, like the
+    // taken user names in the picker — no double-assignment mistakes
+    const taken = {};
+    for (const a of adminAgents) { if (a.sip_extension && (!editing || a.id !== editing.id)) taken[String(a.sip_extension)] = true; }
+    const list = knownExtensions.filter(function (extension) { return !taken[String(extension)]; });
+    if (selected && list.indexOf(selected) === -1) list.push(selected);
     let html = ''; for (const extension of list) html += '<option value="' + escapeHtml(extension) + '"' + (extension === selected ? ' selected' : '') + '>' + escapeHtml(extension) + '</option>';
     el('agent-extension').innerHTML = html;
 }
@@ -1305,7 +1311,7 @@ function selectedQueues() { const queues=[]; for (const o of el('agent-queues').
 function selectedExtension() { return el('agent-extension').value; }
 function openAgent(id) {
     refreshListsThen(function () { if (!el('agent-username-list').hidden) renderPicker(); });
-    editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; el('agent-modal-hint').textContent = '';
+    editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-display-name').value = ''; el('agent-username').value = ''; el('agent-password').value = ''; el('agent-password').type = 'password'; el('agent-password-hint').textContent = ''; el('agent-modal-hint').textContent = '';
     agentIssabelPick = null; closePicker();
     el('agent-ch-voice').checked = true; el('agent-ch-chat').checked = false; el('agent-ch-wa-supervisor').checked = false;
     renderChatQueues([]);
@@ -1314,7 +1320,7 @@ function openAgent(id) {
     if (id) {
         const agent = adminAgents.find(function (a) { return a.id === id; });
         if (!agent) { setStatus('the agent is not in the list any more', 'text-danger'); return; }
-        editing = agent; el('agent-modal-title').textContent = 'Edit ' + agent.username; el('agent-username').value = agent.username; el('agent-password').value = '';
+        editing = agent; el('agent-modal-title').textContent = 'Edit ' + agent.username; el('agent-display-name').value = agent.agent_name || ''; el('agent-username').value = agent.username; el('agent-password').value = ''; el('agent-password').type = 'password'; el('agent-password-hint').textContent = '';
         el('agent-modal-hint').textContent = 'the password stays the same when the field is empty';
         renderExtensions(agent.sip_extension); renderQueues(agent.queues || []);
         agentIssabelPick = agent.issabel_user_id ? { id: Number(agent.issabel_user_id), username: agent.issabel_username || agent.username } : null;
@@ -1345,7 +1351,7 @@ function saveAgent() {
     const keepLegacyLink = !pick && editing && el('agent-username').value.trim() === editing.username;
     const chatOn = el('agent-ch-chat').checked;
     const body = {
-        username: el('agent-username').value.trim(), password: el('agent-password').value,
+        username: el('agent-username').value.trim(), agent_name: el('agent-display-name').value.trim(), password: el('agent-password').value,
         issabel_username: pick ? pick.username : (keepLegacyLink ? (editing.issabel_username || '') : ''),
         issabel_user_id: pick ? pick.id : (keepLegacyLink ? editing.issabel_user_id : null),
         sip_extension: selectedExtension(),
@@ -2879,6 +2885,14 @@ el('agent-save').addEventListener('click', saveAgent);
 el('agent-ch-voice').addEventListener('change', syncChannelBlocks);
 el('agent-ch-chat').addEventListener('change', syncChannelBlocks);
 el('agent-username').addEventListener('input', function () { agentIssabelPick = null; pickerShowAll = false; renderPicker(); });
+el('agent-password-generate').addEventListener('click', function () {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    const buf = new Uint32Array(14); crypto.getRandomValues(buf);
+    let pw = ''; for (const n of buf) pw += alphabet[n % alphabet.length];
+    const field = el('agent-password'); field.type = 'text'; field.value = pw;
+    el('agent-password-hint').textContent = 'generated — copy it now and give it to the agent; it stays visible until you close the form';
+    field.focus(); field.select();
+});
 el('agent-username-toggle').addEventListener('click', function () {
     if (!el('agent-username-list').hidden) { closePicker(); return; }
     pickerShowAll = true; renderPicker(); el('agent-username').focus();
