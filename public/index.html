@@ -1171,20 +1171,40 @@ function forceLogout(extension) { if (!confirm('Force logout extension ' + exten
 function resumeAgent(extension) { postAdmin('simulate/state', {extension: extension, status: 'available', reason: ''}, function(st){ if(st!==200) setStatus('resume failed ('+st+')','text-danger'); }); }
 
 // ----- agents management (unchanged behavior) -----
-function loadAgents(silent) {
+let agentsLoadedAt = 0;
+let agentsLoading = false;
+let agentsLoadWaiters = [];
+function loadAgents(silent, done) {
     const request = new XMLHttpRequest();
     request.open('GET', adminUrl('api/admin/agents'), true);
     request.setRequestHeader('Authorization', 'Bearer ' + adminAuthToken());
     request.onload = function () {
-        if (request.status !== 200) { if (!silent) setStatus('the agents could not be read (' + request.status + ')', 'text-danger'); return; }
+        if (request.status !== 200) { if (!silent) setStatus('the agents could not be read (' + request.status + ')', 'text-danger'); if (done) done(); return; }
         let data={}; try { data = JSON.parse(request.responseText); } catch(e) { data={}; }
         knownExtensions = data.extensions || []; configuredQueues = data.configured_queues || []; adminAgents = data.agents || [];
         issabelUsers = data.issabel_users || []; chatQueues = data.chat_queues || [];
+        agentsLoadedAt = Date.now();
         try { renderAgents(adminAgents); } catch(e) {}
         try { fillReportAgents(); } catch(e) {}
+        if (done) done();
     };
-    request.onerror = function () { if (!silent) setStatus('the agents could not be read', 'text-danger'); };
+    request.onerror = function () { if (!silent) setStatus('the agents could not be read', 'text-danger'); if (done) done(); };
     request.send();
+}
+// Fresh pick-lists on demand (hub picker fix): if the lists are older
+// than a few seconds, fetch them and run fn when they land — so an
+// open picker re-renders itself with the new data instead of the
+// supervisor having to refresh the whole page.
+function refreshListsThen(fn) {
+    if (Date.now() - agentsLoadedAt < 5000) { if (fn) fn(); return; }
+    if (fn) agentsLoadWaiters.push(fn);
+    if (agentsLoading) return;
+    agentsLoading = true;
+    loadAgents(true, function () {
+        agentsLoading = false;
+        const waiters = agentsLoadWaiters; agentsLoadWaiters = [];
+        waiters.forEach(function (f) { try { f(); } catch (e) {} });
+    });
 }
 function renderAgents(list) {
     const rows = [];
@@ -1284,7 +1304,7 @@ function openModal(id) { new bootstrap.Modal(document.getElementById(id || 'agen
 function selectedQueues() { const queues=[]; for (const o of el('agent-queues').options) if (o.selected && o.value) queues.push(o.value); return queues; }
 function selectedExtension() { return el('agent-extension').value; }
 function openAgent(id) {
-    loadAgents(true); // fresh pick-lists: a user created in Issabel a minute ago must be pickable
+    refreshListsThen(function () { if (!el('agent-username-list').hidden) renderPicker(); });
     editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; el('agent-modal-hint').textContent = '';
     agentIssabelPick = null; closePicker();
     el('agent-ch-voice').checked = true; el('agent-ch-chat').checked = false; el('agent-ch-wa-supervisor').checked = false;
@@ -2862,8 +2882,9 @@ el('agent-username').addEventListener('input', function () { agentIssabelPick = 
 el('agent-username-toggle').addEventListener('click', function () {
     if (!el('agent-username-list').hidden) { closePicker(); return; }
     pickerShowAll = true; renderPicker(); el('agent-username').focus();
+    refreshListsThen(function () { if (pickerShowAll && !el('agent-username-list').hidden) renderPicker(); });
 });
-el('agent-username').addEventListener('focus', function () { renderPicker(); });
+el('agent-username').addEventListener('focus', function () { renderPicker(); refreshListsThen(function () { if (!el('agent-username-list').hidden) renderPicker(); }); });
 el('agent-username').addEventListener('keydown', function (e) {
     const box = el('agent-username-list');
     if (box.hidden) return;
