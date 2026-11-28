@@ -2081,7 +2081,11 @@ const waPresenceSent = new Map();
 async function pushWhatsAppPresence(session, force) {
     if (!session || !session.agentId) return;
     const voiceStatus = session.status === 'pause' ? 'pause' : 'available';
-    const inCall = !!session.callState;
+    // session.callState is NOT a boolean: queue reconciliation stores
+    // 'ready-device' for a free device (Asterisk status 1), which is
+    // truthy but means NO call. Only real call states count — the
+    // same reading agentDisplayStatus uses.
+    const inCall = !!session.callState && session.callState !== 'ready-device';
     const sig = voiceStatus + '|' + (inCall ? 1 : 0);
     if (!force && waPresenceSent.get(session.agentId) === sig) return;
     waPresenceSent.set(session.agentId, sig);
