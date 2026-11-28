@@ -2199,6 +2199,24 @@ async function handleWhatsAppTransfer(entry, msg) {
     return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'transfer failed');
 }
 
+// Chat window unassign (v5.32): the WhatsApp service enforces
+// supervisor-only from the stamped session identity; this leg only
+// forwards. The answer carries the new assignee (null = back in the
+// queue pool) so the window can say what happened.
+async function handleWhatsAppUnassign(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const answer = (ok, assignedUserId, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_unassign_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, assigned_user_id: assignedUserId != null ? assignedUserId : null, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId)) return answer(false, null, 'invalid ticket');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/unassign', Object.assign({}, identity, { ticket_id: ticketId }), 15000);
+    if (r.ok && r.json && r.json.ok) return answer(true, r.json.assigned_user_id != null ? r.json.assigned_user_id : null, null);
+    return answer(false, null, (r.json && (r.json.message || r.json.error)) || r.error || 'unassign failed');
+}
+
 // Internal: create a CRM ticket from the WhatsApp module (escalation
 // from inside a chat). Same trust as /internal/whatsapp/events — the
 // middleware ADMIN_TOKEN, server-to-server only. The customer is found
@@ -2504,6 +2522,11 @@ wss.on('connection', (ws, req, payload) => {
         if (msg.event === 'whatsapp_transfer') {
             // chat window transfer (Phase 3)
             handleWhatsAppTransfer(entry, msg).catch((e) => console.error('whatsapp bridge: transfer failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_unassign') {
+            // chat window unassign, supervisors only (v5.32)
+            handleWhatsAppUnassign(entry, msg).catch((e) => console.error('whatsapp bridge: unassign failed: ' + e.message));
             return;
         }
         if (msg.event !== 'status_change') {
