@@ -1219,6 +1219,7 @@ app.post('/api/admin/agents', async (req, res) => {
     } catch (e) {
         console.error('the queues of issabel could not be read: ' + e.message);
     }
+    await normalizeIssabelPair(body);
     const issabelUsername = String(body.issabel_username || '').trim();
     const issabelUserId = parseInt(body.issabel_user_id, 10);
     try {
@@ -1261,6 +1262,7 @@ app.put('/api/admin/agents/:id', async (req, res) => {
         console.error('the queues of issabel could not be read: ' + e.message);
     }
     try {
+        await normalizeIssabelPair(body);
         const update = {
             username: body.username,
             password: body.password,
@@ -2035,6 +2037,19 @@ async function waSyncAgentFor(issabelUserId, username, voiceQueues, chat) {
     }, 15000);
     if (!r.ok) return { ok: false, error: r.error || ('the WhatsApp service answered ' + r.status) };
     return { ok: true };
+}
+
+// When a save carries an Issabel user id, the username belonging to
+// it is taken from the WhatsApp service's list — the pair is never
+// trusted from the request body alone (one identity, hub refinement).
+async function normalizeIssabelPair(body) {
+    const uid = parseInt(body.issabel_user_id, 10);
+    if (!Number.isFinite(uid) || uid <= 0) return;
+    try {
+        const lists = await waProvisioningLists();
+        const user = lists.users.find((u) => Number(u.issabel_user_id) === uid);
+        if (user) body.issabel_username = user.username;
+    } catch (e) { /* best-effort: keep what the page sent */ }
 }
 
 // The identity the WhatsApp service knows this agent by:
