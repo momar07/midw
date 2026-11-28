@@ -2138,6 +2138,67 @@ async function handleWhatsAppStatus(entry, msg) {
     return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'status failed');
 }
 
+// Chat-window media sending (Phase 3): the file rides the socket as
+// base64 (a 10 MB file is ~13.3 MB of JSON — inside the ws default
+// 100 MB payload limit and the service's 45 MB body limit). The
+// service enforces the D6 Settings cap and the unofficial-only rule;
+// here we only forward and relay.
+async function handleWhatsAppMedia(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const answer = (ok, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_media_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId) || !msg.data_base64) return answer(false, 'invalid media');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/media', Object.assign({}, identity, {
+        ticket_id: ticketId,
+        filename: String(msg.filename || 'file').slice(0, 200),
+        mime: String(msg.mime || 'application/octet-stream').slice(0, 120),
+        caption: String(msg.caption || '').slice(0, 1000),
+        data_base64: String(msg.data_base64),
+    }), 60000);
+    if (r.ok && r.json && r.json.ok) return answer(true, null);
+    return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'media send failed');
+}
+
+// Chat-window transfer (Phase 3): the options list (agents + queues
+// with their badge codes) and the transfer itself. The service runs
+// the web transfer rules — one target, closed tickets refused, queue
+// transfers re-offered under the queue's own routing strategy.
+async function handleWhatsAppTransferOptions(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const answer = (ok, options, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_transfer_options_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, options: options || null, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId)) return answer(false, null, 'invalid ticket');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/transfer-options', Object.assign({}, identity, { ticket_id: ticketId }), 15000);
+    if (r.ok && r.json && r.json.ok) return answer(true, r.json, null);
+    return answer(false, null, (r.json && (r.json.message || r.json.error)) || r.error || 'options failed');
+}
+
+async function handleWhatsAppTransfer(entry, msg) {
+    const session = entry.session;
+    const ws = entry.ws;
+    const ticketId = parseInt(msg.ticket_id, 10);
+    const answer = (ok, error) => {
+        try { ws.send(JSON.stringify({ event: 'whatsapp_transfer_result', ticket_id: Number.isFinite(ticketId) ? ticketId : 0, ok: !!ok, error: error || null })); } catch (e) { /* socket gone */ }
+    };
+    if (!Number.isFinite(ticketId)) return answer(false, 'invalid ticket');
+    const payload = { ticket_id: ticketId };
+    if (msg.agent_id != null) payload.agent_id = parseInt(msg.agent_id, 10);
+    if (msg.team_id != null) payload.team_id = parseInt(msg.team_id, 10);
+    if (payload.agent_id == null && payload.team_id == null) return answer(false, 'invalid transfer target');
+    const identity = await waIdentityFor(session);
+    const r = await waInternalPost('/internal/phonebar/transfer', Object.assign({}, identity, payload), 15000);
+    if (r.ok && r.json && r.json.ok) return answer(true, null);
+    return answer(false, (r.json && (r.json.message || r.json.error)) || r.error || 'transfer failed');
+}
+
 // Internal: create a CRM ticket from the WhatsApp module (escalation
 // from inside a chat). Same trust as /internal/whatsapp/events — the
 // middleware ADMIN_TOKEN, server-to-server only. The customer is found
@@ -2427,6 +2488,22 @@ wss.on('connection', (ws, req, payload) => {
             // chat window status action (v5.24); identity from this
             // session, never from the payload
             handleWhatsAppStatus(entry, msg).catch((e) => console.error('whatsapp bridge: status failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_media') {
+            // chat window media send (Phase 3); identity from this
+            // session, never from the payload
+            handleWhatsAppMedia(entry, msg).catch((e) => console.error('whatsapp bridge: media failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_transfer_options') {
+            // chat window transfer menu data (Phase 3)
+            handleWhatsAppTransferOptions(entry, msg).catch((e) => console.error('whatsapp bridge: transfer options failed: ' + e.message));
+            return;
+        }
+        if (msg.event === 'whatsapp_transfer') {
+            // chat window transfer (Phase 3)
+            handleWhatsAppTransfer(entry, msg).catch((e) => console.error('whatsapp bridge: transfer failed: ' + e.message));
             return;
         }
         if (msg.event !== 'status_change') {
