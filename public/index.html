@@ -657,7 +657,7 @@
 <div class="modal fade" id="agent-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
   <div class="modal-header"><h5 class="modal-title" id="agent-modal-title">Create Agent</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
-    <div class="mb-3"><label class="form-label" for="agent-username">User name — the Issabel user</label><div class="position-relative"><input type="text" class="form-control" id="agent-username" placeholder="type a letter or two, then pick" autocomplete="off"><div id="agent-username-list" class="list-group position-absolute w-100 shadow" style="z-index:1060; max-height:240px; overflow:auto" hidden></div></div><div class="form-text">the agent's name IS their Issabel user — one identity for the call center, the SSO link and WhatsApp</div></div>
+    <div class="mb-3"><label class="form-label" for="agent-username">User name — the Issabel user</label><div class="position-relative"><div class="input-group"><input type="text" class="form-control" id="agent-username" placeholder="type a letter or two, or open the list" autocomplete="off"><button type="button" class="btn btn-outline-secondary" id="agent-username-toggle" tabindex="-1" title="show all Issabel users">▾</button></div><div id="agent-username-list" class="list-group position-absolute w-100 shadow" style="z-index:1060; max-height:240px; overflow:auto" hidden></div></div><div class="form-text">the agent's name IS their Issabel user — one identity for the call center, the SSO link and WhatsApp</div></div>
     <div class="mb-3"><label class="form-label" for="agent-password">Password</label><input type="password" class="form-control" id="agent-password" placeholder="the password of the agent"></div>
     <div class="mb-3"><label class="form-label" for="agent-extension">SIP extension</label><select class="form-select" id="agent-extension"></select></div>
     <div class="mb-3"><label class="form-label">Channels</label>
@@ -1208,6 +1208,7 @@ function renderAgents(list) {
 // for the name currently in the box (null while it is free text).
 let agentIssabelPick = null;
 let pickerActive = -1;
+let pickerShowAll = false;
 function takenByOtherAgent(user) {
     return adminAgents.some(function (a) {
         if (editing && a.id === editing.id) return false;
@@ -1215,8 +1216,10 @@ function takenByOtherAgent(user) {
     });
 }
 function pickerMatches() {
-    const q = el('agent-username').value.trim().toLowerCase();
-    return issabelUsers.filter(function (u) { return !q || u.username.toLowerCase().indexOf(q) !== -1; }).slice(0, 30);
+    // two modes in one field: type to search, or open the list and
+    // browse everyone (pickerShowAll, from the ▾ button)
+    const q = pickerShowAll ? '' : el('agent-username').value.trim().toLowerCase();
+    return issabelUsers.filter(function (u) { return !q || u.username.toLowerCase().indexOf(q) !== -1; }).slice(0, pickerShowAll ? 200 : 30);
 }
 function renderPicker() {
     const box = el('agent-username-list');
@@ -1233,7 +1236,7 @@ function renderPicker() {
     }
     box.hidden = false;
 }
-function closePicker() { el('agent-username-list').hidden = true; pickerActive = -1; }
+function closePicker() { el('agent-username-list').hidden = true; pickerActive = -1; pickerShowAll = false; }
 function applyPick(user) {
     agentIssabelPick = { id: Number(user.issabel_user_id), username: user.username };
     el('agent-username').value = user.username;
@@ -1281,6 +1284,7 @@ function openModal(id) { new bootstrap.Modal(document.getElementById(id || 'agen
 function selectedQueues() { const queues=[]; for (const o of el('agent-queues').options) if (o.selected && o.value) queues.push(o.value); return queues; }
 function selectedExtension() { return el('agent-extension').value; }
 function openAgent(id) {
+    loadAgents(true); // fresh pick-lists: a user created in Issabel a minute ago must be pickable
     editing = null; el('agent-modal-title').textContent = 'Create Agent'; el('agent-username').value = ''; el('agent-password').value = ''; el('agent-modal-hint').textContent = '';
     agentIssabelPick = null; closePicker();
     el('agent-ch-voice').checked = true; el('agent-ch-chat').checked = false; el('agent-ch-wa-supervisor').checked = false;
@@ -2854,7 +2858,11 @@ function initCrmUiHandlers() {
 el('agent-save').addEventListener('click', saveAgent);
 el('agent-ch-voice').addEventListener('change', syncChannelBlocks);
 el('agent-ch-chat').addEventListener('change', syncChannelBlocks);
-el('agent-username').addEventListener('input', function () { agentIssabelPick = null; renderPicker(); });
+el('agent-username').addEventListener('input', function () { agentIssabelPick = null; pickerShowAll = false; renderPicker(); });
+el('agent-username-toggle').addEventListener('click', function () {
+    if (!el('agent-username-list').hidden) { closePicker(); return; }
+    pickerShowAll = true; renderPicker(); el('agent-username').focus();
+});
 el('agent-username').addEventListener('focus', function () { renderPicker(); });
 el('agent-username').addEventListener('keydown', function (e) {
     const box = el('agent-username-list');
@@ -2876,7 +2884,7 @@ el('agent-username-list').addEventListener('click', function (e) {
     const u = issabelUsers.find(function (x) { return Number(x.issabel_user_id) === Number(btn.getAttribute('data-uid')); });
     if (u) applyPick(u);
 });
-document.addEventListener('click', function (e) { if (!e.target.closest('#agent-username') && !e.target.closest('#agent-username-list')) closePicker(); });
+document.addEventListener('click', function (e) { if (!e.target.closest('#agent-username') && !e.target.closest('#agent-username-list') && !e.target.closest('#agent-username-toggle')) closePicker(); });
 el('reason-save').addEventListener('click', saveReason);
 </script>
 
