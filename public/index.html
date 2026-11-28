@@ -1892,11 +1892,11 @@ function openSocket() {
       else if (msg.type === 'crm_screen_pop') handleCrmScreenPop(msg);
       else if (msg.type === 'crm_ticket_assigned') handleCrmTicketAssigned(msg);
     };
-    socket.onclose = function () { wsConnected = false; socket = null; if (!token()) { setStatus('unauthorized','text-danger'); return; } scheduleReconnect(); };
+    socket.onclose = function () { wsConnected = false; socket = null; if (!token() && !issabelSso) { setStatus('unauthorized','text-danger'); return; } scheduleReconnect(); };
     socket.onerror = function () { /* close handler handles retry/status */ };
 }
 function scheduleReconnect() {
-    if (!token()) { setStatus('unauthorized','text-danger'); return; }
+    if (!token() && !issabelSso) { setStatus('unauthorized','text-danger'); return; }
     const v = (location.hash||'').replace(/^#/,'').split(/[?&]/)[0] || 'monitor';
     // keep WS retrying, but don't spam status on reports where REST is enough
     if (v !== 'reports' && v !== 'report-builder') setStatus('reconnecting in '+Math.round(retry/1000)+'s...', 'text-warning');
@@ -1987,7 +1987,7 @@ window.addEventListener('load', function () {
     if (issabelSso) { authToken = ''; localStorage.removeItem(AGENT_TOKEN_KEY); localStorage.removeItem(TOKEN_KEY); }
     applyAuthMode();
 
-    if (!token()) setStatus('unauthorized', 'text-danger'); else setStatus('connecting...', 'text-warning');
+    if (!token() && !issabelSso) setStatus('unauthorized', 'text-danger'); else setStatus('connecting...', 'text-warning');
 
     try { initAgentQueuePopovers(); } catch(e) { console.error('initAgentQueuePopovers', e); }
     try { initCrmUiHandlers(); } catch(e) { console.error('initCrmUiHandlers', e); }
@@ -2409,7 +2409,7 @@ function debounceCrmSearch() {
 }
 
 async function loadCrmDispositions() {
-  if (!token()) return;
+  if (!token() && !issabelSso) return;
   const data = await apiJson('api/crm/dispositions').catch(()=>({rows:[]}));
   crmDispositions = data.rows || [];
   const sel = el('crm-log-disposition');
@@ -2420,7 +2420,7 @@ async function loadCrmDispositions() {
 }
 
 async function loadCrmCategories() {
-  if (!token()) return;
+  if (!token() && !issabelSso) return;
   const data = await apiJson('api/crm/categories').catch(()=>({rows:[]}));
   crmCategories = data.rows || [];
   const sel = el('crm-category');
@@ -2436,7 +2436,7 @@ async function loadCrmCategories() {
 }
 
 async function loadCrmAgentsForSelects() {
-  if (!token()) return;
+  if (!token() && !issabelSso) return;
   const data = await apiJson('api/crm/agents').catch(()=>({rows:[]}));
   crmAgentsList = data.rows || [];
   const opts = '<option value="">Unassigned</option>' + crmAgentsList.map(a => '<option value="'+a.id+'">'+escapeHtml((a.username||'') + ' (' + (a.sip_extension||'') + ')')+'</option>').join('');
@@ -2446,7 +2446,7 @@ async function loadCrmAgentsForSelects() {
 }
 
 async function loadCrmCustomers() {
-  if (!token()) return;
+  if (!token() && !issabelSso) return;
   const q = (el('crm-search') && el('crm-search').value || '').trim();
   const qs = new URLSearchParams({ page: String(crmPage), limit: String(crmLimit), owner: crmOwnerFilter || 'all' });
   if (q) qs.set('q', q);
